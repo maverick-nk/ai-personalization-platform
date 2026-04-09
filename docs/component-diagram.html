@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Streaming Personalization Platform — Component Diagram</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Syne:wght@400;600;700;800&display=swap');
+
+  :root {
+    --bg: #0a0c10;
+    --surface: #111318;
+    --surface2: #181c24;
+    --border: #1e2330;
+    --border-bright: #2a3045;
+
+    --test: #00d4ff;
+    --test-dim: rgba(0, 212, 255, 0.12);
+    --ingestion: #f97316;
+    --ingestion-dim: rgba(249, 115, 22, 0.12);
+    --streaming: #a855f7;
+    --streaming-dim: rgba(168, 85, 247, 0.12);
+    --store: #22c55e;
+    --store-dim: rgba(34, 197, 94, 0.12);
+    --inference: #eab308;
+    --inference-dim: rgba(234, 179, 8, 0.12);
+    --privacy: #ef4444;
+    --privacy-dim: rgba(239, 68, 68, 0.12);
+    --obs: #64748b;
+    --obs-dim: rgba(100, 116, 139, 0.12);
+
+    --text: #e2e8f0;
+    --text-dim: #64748b;
+    --text-mid: #94a3b8;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    min-height: 100vh;
+    padding: 40px 24px;
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+
+  header h1 {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: clamp(1.4rem, 3vw, 2rem);
+    letter-spacing: -0.02em;
+    color: #fff;
+    margin-bottom: 8px;
+  }
+
+  header p {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: center;
+    margin-bottom: 40px;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.65rem;
+    color: var(--text-mid);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+
+  .diagram {
+    max-width: 1100px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  /* ── ROW LAYOUT ── */
+  .row {
+    display: grid;
+    gap: 16px;
+    align-items: stretch;
+  }
+
+  .row-1 { grid-template-columns: 1fr; }
+  .row-3 { grid-template-columns: repeat(3, 1fr); }
+  .row-2 { grid-template-columns: 1fr 1fr; }
+  .row-4 { grid-template-columns: repeat(4, 1fr); }
+  .row-2-1 { grid-template-columns: 2fr 1fr; }
+
+  @media (max-width: 768px) {
+    .row-3, .row-4, .row-2, .row-2-1 { grid-template-columns: 1fr; }
+  }
+
+  /* ── BASE COMPONENT ── */
+  .component {
+    border-radius: 10px;
+    padding: 18px 20px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    position: relative;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+
+  .component:hover {
+    border-color: var(--border-bright);
+  }
+
+  .component-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .component-icon {
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+
+  .component-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .component-tag {
+    margin-left: auto;
+    font-size: 0.55rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 20px;
+    font-weight: 600;
+  }
+
+  .items {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .item {
+    font-size: 0.68rem;
+    color: var(--text-mid);
+    padding: 4px 8px;
+    border-radius: 5px;
+    background: var(--surface2);
+    border-left: 2px solid transparent;
+    line-height: 1.4;
+  }
+
+  /* ── COLOR VARIANTS ── */
+  .test .component-title { color: var(--test); }
+  .test { border-color: rgba(0,212,255,0.25); background: var(--test-dim); }
+  .test .item { border-left-color: var(--test); }
+  .test .component-tag { background: var(--test-dim); color: var(--test); }
+
+  .ingestion .component-title { color: var(--ingestion); }
+  .ingestion { border-color: rgba(249,115,22,0.25); }
+  .ingestion .item { border-left-color: var(--ingestion); }
+  .ingestion .component-tag { background: var(--ingestion-dim); color: var(--ingestion); }
+
+  .streaming .component-title { color: var(--streaming); }
+  .streaming { border-color: rgba(168,85,247,0.25); }
+  .streaming .item { border-left-color: var(--streaming); }
+  .streaming .component-tag { background: var(--streaming-dim); color: var(--streaming); }
+
+  .store .component-title { color: var(--store); }
+  .store { border-color: rgba(34,197,94,0.25); }
+  .store .item { border-left-color: var(--store); }
+  .store .component-tag { background: var(--store-dim); color: var(--store); }
+
+  .inference .component-title { color: var(--inference); }
+  .inference { border-color: rgba(234,179,8,0.25); }
+  .inference .item { border-left-color: var(--inference); }
+  .inference .component-tag { background: var(--inference-dim); color: var(--inference); }
+
+  .privacy .component-title { color: var(--privacy); }
+  .privacy { border-color: rgba(239,68,68,0.25); }
+  .privacy .item { border-left-color: var(--privacy); }
+  .privacy .component-tag { background: var(--privacy-dim); color: var(--privacy); }
+
+  .obs .component-title { color: var(--obs); }
+  .obs { border-color: rgba(100,116,139,0.25); }
+  .obs .item { border-left-color: var(--obs); }
+  .obs .component-tag { background: var(--obs-dim); color: var(--obs); }
+
+  /* ── ARROWS ── */
+  .arrow-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    padding: 2px 0;
+  }
+
+  .arrow-down {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    flex: 1;
+  }
+
+  .arrow-line {
+    width: 1px;
+    height: 20px;
+    background: var(--border-bright);
+  }
+
+  .arrow-tip {
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 7px solid var(--border-bright);
+  }
+
+  .arrow-label {
+    font-size: 0.58rem;
+    color: var(--text-dim);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-top: 2px;
+    white-space: nowrap;
+  }
+
+  /* ── SECTION LABEL ── */
+  .section-label {
+    font-size: 0.6rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    text-align: center;
+    margin-bottom: 4px;
+  }
+
+  /* ── FLOW CONNECTOR (horizontal) ── */
+  .h-flow {
+    display: flex;
+    align-items: center;
+    gap: 0;
+  }
+
+  .h-arrow {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+    padding: 0 4px;
+    color: var(--border-bright);
+    font-size: 0.7rem;
+  }
+
+  /* ── SEPARATOR ── */
+  .sep {
+    height: 1px;
+    background: var(--border);
+    margin: 8px 0;
+  }
+
+  /* ── WIDE COMPONENT spanning 2 cols internally ── */
+  .double {
+    grid-column: span 2;
+  }
+
+  /* ── FLOW TEXT ── */
+  .flow-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.6rem;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 3px 10px;
+    background: var(--surface);
+  }
+
+  .flow-badge span {
+    color: var(--text-mid);
+  }
+
+  .flows {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    margin: 6px 0;
+  }
+
+  /* ── INTERACTION NOTES ── */
+  .interactions {
+    max-width: 1100px;
+    margin: 32px auto 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 14px;
+  }
+
+  .interaction-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+  }
+
+  .interaction-card h3 {
+    font-family: 'Syne', sans-serif;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .flow-step {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 6px;
+    align-items: flex-start;
+  }
+
+  .step-num {
+    font-size: 0.58rem;
+    font-weight: 700;
+    color: var(--text-dim);
+    background: var(--surface2);
+    border-radius: 3px;
+    padding: 1px 5px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .step-text {
+    font-size: 0.65rem;
+    color: var(--text-mid);
+    line-height: 1.5;
+  }
+
+  .step-text strong {
+    color: var(--text);
+    font-weight: 500;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Streaming Personalization Platform</h1>
+  <p>Component Architecture · Test-Driven Validation</p>
+</header>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:var(--test)"></div>Test Harness</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--ingestion)"></div>Event Ingestion</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--streaming)"></div>Stream Processing</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--store)"></div>Feature Stores</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--inference)"></div>Inference</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--privacy)"></div>Privacy Layer</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--obs)"></div>Observability</div>
+</div>
+
+<div class="diagram">
+
+  <!-- ROW 1: TEST HARNESS -->
+  <div class="section-label">Entry Point</div>
+  <div class="row row-3">
+    <div class="component test">
+      <div class="component-header">
+        <span class="component-icon">🧪</span>
+        <span class="component-title">Test Scenario Runner</span>
+        <span class="component-tag">pytest</span>
+      </div>
+      <div class="items">
+        <div class="item">Simulate users & sessions</div>
+        <div class="item">Drive watch / skip / pause events</div>
+        <div class="item">Assert recommendation quality</div>
+      </div>
+    </div>
+    <div class="component test">
+      <div class="component-header">
+        <span class="component-icon">👤</span>
+        <span class="component-title">User Behavior Simulator</span>
+        <span class="component-tag">fixtures</span>
+      </div>
+      <div class="items">
+        <div class="item">Configurable user profiles</div>
+        <div class="item">Cold start / active / churned users</div>
+        <div class="item">Consent state management</div>
+      </div>
+    </div>
+    <div class="component test">
+      <div class="component-header">
+        <span class="component-icon">✅</span>
+        <span class="component-title">Validation & Assertions</span>
+        <span class="component-tag">metrics</span>
+      </div>
+      <div class="items">
+        <div class="item">Relevance scoring (Precision@K)</div>
+        <div class="item">Latency assertions (&lt;50ms)</div>
+        <div class="item">Privacy compliance checks</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ARROW DOWN -->
+  <div class="arrow-row">
+    <div class="arrow-down">
+      <div class="arrow-line"></div>
+      <div class="arrow-tip"></div>
+      <div class="arrow-label">HTTP REST / gRPC</div>
+    </div>
+  </div>
+
+  <!-- ROW 2: TWO PATHS — Event Ingestion + Inference API -->
+  <div class="section-label">API Layer</div>
+  <div class="row row-2">
+    <div class="component ingestion">
+      <div class="component-header">
+        <span class="component-icon">📡</span>
+        <span class="component-title">Event Ingestion API</span>
+        <span class="component-tag">REST</span>
+      </div>
+      <div class="items">
+        <div class="item">POST /events/watch</div>
+        <div class="item">POST /events/session</div>
+        <div class="item">Schema validation · Pseudonymize user IDs</div>
+        <div class="item">Publish to Kafka topic</div>
+      </div>
+    </div>
+    <div class="component inference">
+      <div class="component-header">
+        <span class="component-icon">🎯</span>
+        <span class="component-title">Inference / Recommendation API</span>
+        <span class="component-tag">gRPC · Go</span>
+      </div>
+      <div class="items">
+        <div class="item">GET /recommend/{user_id}?top_n=10</div>
+        <div class="item">Consent check → feature fetch → rank</div>
+        <div class="item">Returns ranked content list + scores</div>
+        <div class="item">Target: &lt;50ms end-to-end</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ARROW DOWN split -->
+  <div class="row row-2">
+    <div class="arrow-row">
+      <div class="arrow-down">
+        <div class="arrow-line"></div>
+        <div class="arrow-tip"></div>
+        <div class="arrow-label">produce messages</div>
+      </div>
+    </div>
+    <div class="arrow-row">
+      <div class="arrow-down">
+        <div class="arrow-line"></div>
+        <div class="arrow-tip"></div>
+        <div class="arrow-label">reads features + model</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ROW 3: Kafka + Privacy -->
+  <div class="section-label">Core Processing</div>
+  <div class="row row-2">
+    <div class="component ingestion">
+      <div class="component-header">
+        <span class="component-icon">📨</span>
+        <span class="component-title">Kafka</span>
+        <span class="component-tag">message bus</span>
+      </div>
+      <div class="items">
+        <div class="item">Topic: user.watch.events</div>
+        <div class="item">Topic: user.session.events</div>
+        <div class="item">Durable, ordered, replay-capable</div>
+      </div>
+    </div>
+    <div class="component privacy">
+      <div class="component-header">
+        <span class="component-icon">🔒</span>
+        <span class="component-title">Privacy Enforcement Layer</span>
+        <span class="component-tag">middleware</span>
+      </div>
+      <div class="items">
+        <div class="item">Consent table · Postgres</div>
+        <div class="item">PATCH /privacy/consent/{user_id}</div>
+        <div class="item">Blocks feature access if revoked</div>
+        <div class="item">Audit log · Fallback feed trigger</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ARROW from Kafka down to Flink -->
+  <div class="arrow-row">
+    <div class="arrow-down" style="flex:0 0 45%">
+      <div class="arrow-line"></div>
+      <div class="arrow-tip"></div>
+      <div class="arrow-label">consume events</div>
+    </div>
+  </div>
+
+  <!-- ROW 4: Flink -->
+  <div class="section-label">Stream Processing</div>
+  <div class="row row-1">
+    <div class="component streaming">
+      <div class="component-header">
+        <span class="component-icon">⚡</span>
+        <span class="component-title">Streaming Feature Pipeline</span>
+        <span class="component-tag">Flink / PyFlink</span>
+      </div>
+      <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px;">
+        <div class="item">watch_count_10min</div>
+        <div class="item">category_affinity_score</div>
+        <div class="item">avg_watch_duration</div>
+        <div class="item">time_of_day_bucket</div>
+        <div class="item">recency_score</div>
+        <div class="item">session_genre_vector</div>
+      </div>
+      <div style="margin-top:10px; font-size:0.62rem; color:var(--text-dim);">
+        Windowed aggregations · Deduplication · Schema-validated output
+      </div>
+    </div>
+  </div>
+
+  <!-- ARROW to dual stores -->
+  <div class="row row-2">
+    <div class="arrow-row">
+      <div class="arrow-down">
+        <div class="arrow-line"></div>
+        <div class="arrow-tip"></div>
+        <div class="arrow-label">real-time write (&lt;2s)</div>
+      </div>
+    </div>
+    <div class="arrow-row">
+      <div class="arrow-down">
+        <div class="arrow-line"></div>
+        <div class="arrow-tip"></div>
+        <div class="arrow-label">batch sink</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ROW 5: Feature Stores -->
+  <div class="section-label">Feature Stores</div>
+  <div class="row row-2">
+    <div class="component store">
+      <div class="component-header">
+        <span class="component-icon">⚡</span>
+        <span class="component-title">Online Feature Store</span>
+        <span class="component-tag">Redis</span>
+      </div>
+      <div class="items">
+        <div class="item">Key: user:{id}:features</div>
+        <div class="item">TTL-managed · &lt;5ms lookup</div>
+        <div class="item">Read by Inference API at serving time</div>
+      </div>
+    </div>
+    <div class="component store">
+      <div class="component-header">
+        <span class="component-icon">🗄️</span>
+        <span class="component-title">Offline Feature Store</span>
+        <span class="component-tag">Parquet</span>
+      </div>
+      <div class="items">
+        <div class="item">Versioned snapshots by date</div>
+        <div class="item">Same schema as online store</div>
+        <div class="item">Used for model training pipeline</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ARROW from offline store to training -->
+  <div class="arrow-row">
+    <div class="arrow-down" style="flex:0 0 45%; margin-left:55%">
+      <div class="arrow-line"></div>
+      <div class="arrow-tip"></div>
+      <div class="arrow-label">training data</div>
+    </div>
+  </div>
+
+  <!-- ROW 6: Model Training + Model Registry -->
+  <div class="section-label">Model Layer</div>
+  <div class="row row-2">
+    <div class="component inference">
+      <div class="component-header">
+        <span class="component-icon">🧠</span>
+        <span class="component-title">Model Training Pipeline</span>
+        <span class="component-tag">LightGBM</span>
+      </div>
+      <div class="items">
+        <div class="item">Reads Parquet feature snapshots</div>
+        <div class="item">Train click-probability model</div>
+        <div class="item">Evaluate · version · register</div>
+      </div>
+    </div>
+    <div class="component inference">
+      <div class="component-header">
+        <span class="component-icon">📦</span>
+        <span class="component-title">Model Registry</span>
+        <span class="component-tag">MLflow / local</span>
+      </div>
+      <div class="items">
+        <div class="item">Versioned model artifacts</div>
+        <div class="item">Feature schema contract stored</div>
+        <div class="item">Inference API polls for new version</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Observability bar -->
+  <div style="margin-top:8px">
+    <div class="section-label">Cross-Cutting Concerns</div>
+    <div class="component obs">
+      <div class="component-header">
+        <span class="component-icon">📊</span>
+        <span class="component-title">Observability Stack</span>
+        <span class="component-tag">Prometheus · Grafana</span>
+      </div>
+      <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px;">
+        <div class="item">Inference latency histogram</div>
+        <div class="item">Feature freshness lag (age of Redis keys)</div>
+        <div class="item">Kafka consumer lag</div>
+        <div class="item">Prediction score distribution drift</div>
+        <div class="item">Consent revocation audit trail</div>
+        <div class="item">Cold-start fallback rate</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── KEY INTERACTION FLOWS ── -->
+<div class="interactions">
+
+  <div class="interaction-card">
+    <h3 style="color:var(--test)">🧪 Test Flow: Watch Event → Updated Recs</h3>
+    <div class="flow-step"><span class="step-num">1</span><span class="step-text">Test posts <strong>POST /events/watch</strong> (user_id, content_id, watch_pct)</span></div>
+    <div class="flow-step"><span class="step-num">2</span><span class="step-text">Event ingested into <strong>Kafka</strong> with pseudonymized ID</span></div>
+    <div class="flow-step"><span class="step-num">3</span><span class="step-text"><strong>Flink</strong> computes updated features within ~2s</span></div>
+    <div class="flow-step"><span class="step-num">4</span><span class="step-text"><strong>Redis</strong> key updated for user</span></div>
+    <div class="flow-step"><span class="step-num">5</span><span class="step-text">Test calls <strong>GET /recommend/{user_id}</strong></span></div>
+    <div class="flow-step"><span class="step-num">6</span><span class="step-text">Assert new category appears in top-N results</span></div>
+  </div>
+
+  <div class="interaction-card">
+    <h3 style="color:var(--privacy)">🔒 Test Flow: Consent Revocation</h3>
+    <div class="flow-step"><span class="step-num">1</span><span class="step-text">Test calls <strong>PATCH /privacy/consent/{user_id}</strong> → revoke</span></div>
+    <div class="flow-step"><span class="step-num">2</span><span class="step-text"><strong>Postgres</strong> consent record updated immediately</span></div>
+    <div class="flow-step"><span class="step-num">3</span><span class="step-text">Test calls <strong>GET /recommend/{user_id}</strong></span></div>
+    <div class="flow-step"><span class="step-num">4</span><span class="step-text"><strong>Privacy middleware</strong> intercepts, blocks Redis feature fetch</span></div>
+    <div class="flow-step"><span class="step-num">5</span><span class="step-text">Assert response is <strong>fallback trending feed</strong> (non-personalized)</span></div>
+    <div class="flow-step"><span class="step-num">6</span><span class="step-text">Assert <strong>audit log</strong> recorded the revocation event</span></div>
+  </div>
+
+  <div class="interaction-card">
+    <h3 style="color:var(--ingestion)">❄️ Test Flow: Cold Start User</h3>
+    <div class="flow-step"><span class="step-num">1</span><span class="step-text">Test registers <strong>new user_id</strong> with no history</span></div>
+    <div class="flow-step"><span class="step-num">2</span><span class="step-text"><strong>GET /recommend/{user_id}</strong> — Redis cache miss</span></div>
+    <div class="flow-step"><span class="step-num">3</span><span class="step-text">Inference API detects missing features → triggers fallback</span></div>
+    <div class="flow-step"><span class="step-num">4</span><span class="step-text">Assert <strong>generic trending content</strong> returned (no personalization)</span></div>
+    <div class="flow-step"><span class="step-num">5</span><span class="step-text">Post 3 watch events → assert recs begin to <strong>shift toward watched genres</strong></span></div>
+  </div>
+
+  <div class="interaction-card">
+    <h3 style="color:var(--streaming)">⚡ Test Flow: Feature Freshness</h3>
+    <div class="flow-step"><span class="step-num">1</span><span class="step-text">Record <strong>timestamp T0</strong> before posting watch event</span></div>
+    <div class="flow-step"><span class="step-num">2</span><span class="step-text">Post event · Poll <strong>GET /features/{user_id}</strong></span></div>
+    <div class="flow-step"><span class="step-num">3</span><span class="step-text">Assert feature key updated within <strong>&lt;5 seconds</strong> of T0</span></div>
+    <div class="flow-step"><span class="step-num">4</span><span class="step-text">Check <strong>Prometheus metric</strong>: feature_age_seconds &lt; threshold</span></div>
+  </div>
+
+  <div class="interaction-card">
+    <h3 style="color:var(--inference)">🔁 Test Flow: Model Hot-Swap</h3>
+    <div class="flow-step"><span class="step-num">1</span><span class="step-text">Trigger <strong>training pipeline</strong> on latest Parquet snapshot</span></div>
+    <div class="flow-step"><span class="step-num">2</span><span class="step-text">New model registered in <strong>Model Registry</strong> with version tag</span></div>
+    <div class="flow-step"><span class="step-num">3</span><span class="step-text">Assert Inference API <strong>polls and loads</strong> new model within poll interval</span></div>
+    <div class="flow-step"><span class="step-num">4</span><span class="step-text">Assert <strong>no downtime</strong> — prior requests still served during swap</span></div>
+    <div class="flow-step"><span class="step-num">5</span><span class="step-text">Assert <strong>feature schema</strong> of new model matches Redis keys</span></div>
+  </div>
+
+  <div class="interaction-card">
+    <h3 style="color:var(--obs)">📊 Test Flow: Latency Validation</h3>
+    <div class="flow-step"><span class="step-num">1</span><span class="step-text">Run <strong>k6 load test</strong>: 100 concurrent users requesting recommendations</span></div>
+    <div class="flow-step"><span class="step-num">2</span><span class="step-text">Assert <strong>p95 latency &lt; 50ms</strong> end-to-end</span></div>
+    <div class="flow-step"><span class="step-num">3</span><span class="step-text">Assert <strong>Redis fetch &lt; 5ms</strong> at p99</span></div>
+    <div class="flow-step"><span class="step-num">4</span><span class="step-text">Assert <strong>no consent check</strong> adds &gt;5ms overhead</span></div>
+    <div class="flow-step"><span class="step-num">5</span><span class="step-text">Grafana dashboard confirms no latency spikes under load</span></div>
+  </div>
+
+</div>
+
+</body>
+</html>
