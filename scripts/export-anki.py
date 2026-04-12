@@ -27,7 +27,7 @@ import argparse
 import re
 import sys
 from pathlib import Path
-
+from typing import Optional
 
 QUIZ_DIR = Path("docs/sys-design-concepts")
 DEFAULT_OUTPUT = Path("docs/sys-design-concepts/anki-export.txt")
@@ -78,7 +78,7 @@ def parse_quiz_file(path: Path) -> list[dict]:
 
 
 def parse_question_block(body: str, service: str, subfeature: str,
-                          q_type: str, concept: str) -> dict | None:
+                          q_type: str, concept: str) -> Optional[dict]:
     """Parse a single question block into a card dict."""
 
     # Extract question text (before the options)
