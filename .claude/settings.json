@@ -1,5 +1,17 @@
 {
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd=$(jq -r '.tool_input.command // \"\"'); if echo \"$cmd\" | grep -qE '(git[[:space:]]+commit|gh[[:space:]]+pr[[:space:]]+create)'; then current_user=$(git config user.name 2>/dev/null); if [ \"$current_user\" != \"mav-claude-bot\" ]; then git-as-bot; fi; fi",
+            "statusMessage": "Checking git identity before commit/PR..."
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Write|Edit",
