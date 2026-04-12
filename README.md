@@ -2,6 +2,8 @@
 
 A focused end-to-end ML systems project that simulates how platforms like Netflix and YouTube personalize content — with **real-time feature updates, low-latency inference, and privacy-by-design controls**.
 
+Furthermore, tt also doubles as an **active learning project** — every architectural decision is documented as an ADR, and each sub-feature is reinforced with DDIA-anchored concept quizzes to build durable systems design intuition. 
+
 Note: This project is intentionally scoped to a **single strong use case** to deeply demonstrate ML infrastructure, distributed systems, and privacy-aware engineering.
 
 ---
