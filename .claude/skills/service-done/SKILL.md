@@ -194,3 +194,15 @@ Ready for PR. Run /ship-pr to review and raise.
 If there are unresolved items (e.g. caller services that need review), list them under "Follow-up needed before merging".
 
 Then say: "Run `/ship-pr` when ready."
+
+---
+
+## Note on Concept Quiz
+
+`service-done` runs at the **end of a full service**. The concept quiz (`/concept-quiz`) should be run after **each sub-feature** — not here. If the user skipped any concept quiz sessions during the service build, flag it:
+
+```
+⚠ Concept quiz: N sub-features were completed without running /concept-quiz.
+  Run it now for the most recent sub-feature, or it will be skipped permanently.
+  docs/sys-design-concepts/<service>.md will have gaps for those sub-features.
+```
