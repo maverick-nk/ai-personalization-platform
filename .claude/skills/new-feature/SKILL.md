@@ -88,9 +88,17 @@ Do not start writing code until the user confirms or gives the first implementat
 
 ---
 
-## Step 5 — Remind at End of Task
+## Step 5 — Remind at End of Each Sub-Feature
 
-When the implementation task is complete, prompt:
+When each sub-feature is complete (not just the full task), prompt:
+
+```
+Sub-feature complete.
+  → Run /concept-quiz to test the system design concepts used
+  → Then continue to the next sub-feature, or wrap up with /service-done <service>
+```
+
+When the full task is done and the user is ready to close out:
 
 ```
 Task complete. Before raising a PR:
