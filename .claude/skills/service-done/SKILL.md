@@ -120,18 +120,73 @@ Do not silently skip this check — interface changes breaking callers is the mo
 
 ---
 
-## Step 7 — Summary and Handoff
+## Step 7 — Retrospective
+
+Ask the user these four questions in one message. They are short — expect brief answers, not essays. Wait for the response before proceeding.
+
+```
+Quick retrospective for <service> (keep answers to 1–3 sentences each):
+
+1. What went smoothly or worked better than expected?
+2. What would you design differently now, knowing what you know after building it?
+3. Which concept or behaviour surprised you most during this service?
+4. Any open questions you still have — things that feel fuzzy or unresolved?
+```
+
+Write the retrospective to `docs/decisions/<service>/retro-<YYYY-MM-DD>.md`:
+
+```markdown
+# Retrospective — <service-name>
+
+**Date:** <YYYY-MM-DD>  
+**Service:** <service-name>
+
+---
+
+## What went well
+<user's answer>
+
+## Would design differently
+<user's answer>
+
+## Most surprising
+<user's answer>
+
+## Open questions
+<user's answer>
+
+---
+
+## Follow-up actions
+<!-- Any open questions that should become ADRs, incident logs, or concept quiz topics -->
+<derive from answers — e.g. if they say "I'm still not sure why X", suggest /concept-quiz or /adr>
+```
+
+If any open question from the retrospective maps to a DDIA concept worth testing, note it:
+```
+→ Your open question about <X> maps to DDIA Ch <N>. Run /concept-quiz to explore it.
+```
+
+If any surprise or "would design differently" reveals a decision worth documenting:
+```
+→ Consider running /adr to record the trade-off around <X> before the context fades.
+```
+
+---
+
+## Step 8 — Summary and Handoff
 
 Print a brief wrap-up:
 
 ```
 Service Done — <service(s)>
-───────────────────────────────────────
-Updated CONTEXT.md:      event-ingestion
-Flags resolved:          0
-New dependencies:        none
-_master.md synced:       no (no dep changes)
-Interface blast radius:  none
+─────────────────────────────��─────────
+Updated CONTEXT.md:      <service>
+Flags resolved:          <N>
+New dependencies:        <none / list>
+_master.md synced:       <yes / no>
+Interface blast radius:  <none / list>
+Retrospective written:   docs/decisions/<service>/retro-<date>.md
 
 Ready for PR. Run /ship-pr to review and raise.
 ```

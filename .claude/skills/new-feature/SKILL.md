@@ -88,12 +88,40 @@ Do not start writing code until the user confirms or gives the first implementat
 
 ---
 
-## Step 5 — Remind at End of Task
+## Step 5 — Watch for Design Decisions During Implementation
 
-When the implementation task is complete, prompt:
+While implementing, watch for moments where a non-trivial choice is made — these are ADR candidates:
+
+**Signals that an ADR is warranted:**
+- Choosing between two viable technologies or approaches (e.g. "use Redis hash vs JSON string per user")
+- Accepting a trade-off that constrains future work (e.g. "HMAC is one-way — we can never recover the original user_id")
+- Picking a consistency or delivery guarantee (e.g. "at-least-once is acceptable here because the consumer is idempotent")
+- Choosing a schema or data format that other services will depend on
+
+When one of these arises, prompt after the sub-feature:
+```
+→ This looks like a decision worth recording. Run /adr before the reasoning fades.
+```
+
+Do not prompt for trivial decisions (variable names, minor implementation details, following obvious conventions).
+
+---
+
+## Step 6 — Remind at End of Each Sub-Feature
+
+When each sub-feature is complete (not just the full task), prompt:
+
+```
+Sub-feature complete.
+  → Run /concept-quiz to test the system design concepts used
+  → If a non-trivial design decision was made: run /adr
+  → Then continue to the next sub-feature, or wrap up with /service-done <service>
+```
+
+When the full task is done and the user is ready to close out:
 
 ```
 Task complete. Before raising a PR:
-  1. Run /service-done <service> to update CONTEXT.md
+  1. Run /service-done <service> to update CONTEXT.md and write retrospective
   2. Run /ship-pr to review and raise the pull request
 ```
