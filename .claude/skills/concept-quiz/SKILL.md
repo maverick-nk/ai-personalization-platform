@@ -1,5 +1,6 @@
 ---
 name: concept-quiz
+category: learning
 description: After each sub-feature implementation, maps what was built to system design concepts from "Designing Data-Intensive Applications" (Kleppmann) and related systems literature, then tests understanding via interactive MCQs. Stores questions, answers, scores, and reasoning in docs/sys-design-concepts/<service>.md. Triggers on "/concept-quiz", "test my knowledge", "quiz me", "what concepts did we use", or "system design concepts".
 ---
 

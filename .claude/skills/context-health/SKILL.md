@@ -1,5 +1,6 @@
 ---
 name: context-health
+category: infrastructure
 description: Audits the repo context system for staleness, missing coverage, broken dependency references, and open flags — then fixes or reports each finding. Use periodically or before starting a large task. Triggers on phrases like "check context health", "audit context", "context system status", "/context-health", or "are the CONTEXT.md files up to date".
 ---
 

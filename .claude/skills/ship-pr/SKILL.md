@@ -1,5 +1,6 @@
 ---
 name: ship-pr
+category: workflow
 description: Reviews the current branch, checks code quality, then raises a pull request with consistent formatting aligned to this repo's conventions. Use when a feature branch is ready to merge. Triggers on phrases like "raise a PR", "open a PR", "ship this", "create a pull request", "review and raise", or "/ship-pr".
 ---
 
@@ -53,6 +54,12 @@ If issues are found:
 - For non-blocking issues: add them to the PR body under `## Known issues / follow-ups`
 
 If no issues are found: state "Review passed — no issues found." and proceed.
+
+**README sync check:** If any `.claude/skills/` files appear in the diff, run:
+```bash
+python3 scripts/sync-readme-skills.py
+```
+If README was updated, stage it automatically — it should always travel with skill changes. If the script is not yet available (infra not bootstrapped), note it as a non-blocking follow-up.
 
 ---
 

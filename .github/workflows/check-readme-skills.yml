@@ -1,0 +1,30 @@
+name: Check README skills section is in sync
+
+on:
+  pull_request:
+    paths:
+      - ".claude/skills/**"
+      - "scripts/sync-readme-skills.py"
+
+jobs:
+  check-readme-sync:
+    name: README skills section up to date
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check README is in sync with skill frontmatter
+        run: python scripts/sync-readme-skills.py --check
+
+      - name: Show diff if out of sync
+        if: failure()
+        run: |
+          python scripts/sync-readme-skills.py --dry-run > /tmp/expected.md
+          echo "--- Expected README skills section ---"
+          cat /tmp/expected.md
+          echo ""
+          echo "Fix: run 'python scripts/sync-readme-skills.py' and commit the result."

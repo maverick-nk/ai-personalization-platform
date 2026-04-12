@@ -1,5 +1,6 @@
 ---
 name: adr
+category: learning
 description: Creates an Architecture Decision Record (ADR) capturing a non-trivial design decision — what was decided, what alternatives were considered, the trade-offs, and which system design concepts apply. Produces a permanent, searchable record in docs/decisions/<service>/. Triggers on "/adr", "why did we choose", "document this decision", "record this trade-off", or when a significant design choice is made during implementation.
 ---
 

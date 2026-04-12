@@ -1,5 +1,6 @@
 ---
 name: incident
+category: learning
 description: Documents a bug, test failure, or unexpected system behaviour as a structured incident log entry. Captures symptoms, root cause, fix, and the DDIA concept that explains why it happened — turning production bugs into permanent learning records. Triggers on "/incident", "log this bug", "document this failure", "test is failing", or when a significant bug or unexpected behaviour is encountered during development.
 ---
 

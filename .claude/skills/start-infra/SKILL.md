@@ -1,5 +1,6 @@
 ---
 name: start-infra
+category: infrastructure
 description: Starts local infrastructure via docker-compose, polls health checks for each service, and reports readiness. Use before running the test harness or any service that depends on Kafka, Redis, Postgres, or MLflow. Triggers on phrases like "start infra", "bring up infra", "start the stack", "/start-infra", "start docker", or "is the infra running".
 ---
 
