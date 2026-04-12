@@ -191,3 +191,56 @@ The MVP is intentionally constrained.
 - Federated learning
 - Multi-region HA
 - Complex ranking systems
+
+---
+
+# Claude Code Integration
+
+This project is built with [Claude Code](https://claude.ai/code) as an active development partner. A set of custom skills automates the full development lifecycle — from starting a feature to raising a PR — and embeds active learning into every step of the build.
+
+## Development Workflow Skills
+
+| Skill | Invoke | Purpose |
+|---|---|---|
+| **new-feature** | `/new-feature` | Creates a branch, loads the minimum required service context, and prints a task brief with constraints before any code is written |
+| **service-done** | `/service-done <service>` | End-of-task wrap-up: updates `CONTEXT.md`, resolves flags, checks dependency blast radius, prompts a retrospective |
+| **ship-pr** | `/ship-pr` | Reviews the diff for privacy violations, contract compliance, and ops readiness, then raises a consistently formatted pull request |
+
+## Infrastructure Skills
+
+| Skill | Invoke | Purpose |
+|---|---|---|
+| **start-infra** | `/start-infra` | Starts the docker-compose stack, polls health checks for Kafka, Redis, Postgres, and MLflow, and creates missing Kafka topics |
+| **schema-check** | `/schema-check` | Three-way diff of Redis (online store), Parquet (offline store), and MLflow (registered contract) — detects training/serving feature skew before it causes silent model degradation |
+| **context-health** | `/context-health` | Audits all `CONTEXT.md` files for staleness, missing service coverage, broken dependency references, and open flags |
+
+## Learning Skills
+
+This project doubles as a study platform for distributed systems concepts, anchored to *Designing Data-Intensive Applications* (Kleppmann).
+
+| Skill | Invoke | Purpose |
+|---|---|---|
+| **concept-quiz** | `/concept-quiz` | After each sub-feature, maps the implementation to DDIA concepts and runs 3–15 interactive MCQs (concept recall, trade-off reasoning, scenario-based). Results saved to `docs/sys-design-concepts/<service>.md`. Concepts scored ≥ 80% are deprioritised in future sessions |
+| **adr** | `/adr` | Records an Architecture Decision Record: decision, alternatives, consequences, and DDIA concept links. Stored in `docs/decisions/`. Automatically prompted when a non-trivial design choice is made |
+| **incident** | `/incident` | Documents bugs and test failures as structured learning records: symptoms, root cause, fix, and the DDIA concept that explains why it happened. Stored in `docs/incidents/` |
+
+Concept quiz results can be exported to Anki for spaced repetition review:
+
+```bash
+python scripts/export-anki.py                  # all services
+python scripts/export-anki.py --missed-only    # weak-area focus deck
+```
+
+## Context System
+
+The repo uses a graph-aware context system so Claude loads only the minimum context needed per task — reducing token usage and keeping responses focused on the relevant service.
+
+```
+_master.md                          ← service relationship graph
+services/<name>/CONTEXT.md          ← living context doc per service
+docs/decisions/                     ← ADRs + retrospectives
+docs/incidents/                     ← incident log
+docs/sys-design-concepts/           ← quiz history per service
+```
+
+After every task: `scripts/update-context.sh <service-name>`
