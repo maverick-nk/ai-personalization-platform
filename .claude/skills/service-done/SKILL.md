@@ -1,5 +1,6 @@
 ---
 name: service-done
+category: workflow
 description: End-of-task wrapper that updates CONTEXT.md for each service touched, resolves open flags, syncs _master.md if dependencies changed, and hands off to ship-pr. Run after completing any implementation task before raising a PR. Triggers on phrases like "task done", "I'm done", "wrap up", "finish up", "update context", "/service-done", or when the user names a service and says the work is complete.
 ---
 

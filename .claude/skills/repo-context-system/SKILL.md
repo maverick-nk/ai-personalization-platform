@@ -1,5 +1,6 @@
 ---
 name: repo-context-system
+category: tooling
 description: Sets up and maintains a token-efficient, graph-aware context system for software repos used with Claude Code. Use this skill whenever starting a new project, onboarding Claude to an existing repo, or when the user mentions context management, wiki setup, service documentation, or wants Claude to understand a codebase structure. Triggers on phrases like "set up context", "create the wiki", "document the services", "update the context system", or "start a new project".
 ---
 

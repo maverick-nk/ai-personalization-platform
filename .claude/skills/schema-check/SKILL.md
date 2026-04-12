@@ -1,5 +1,6 @@
 ---
 name: schema-check
+category: infrastructure
 description: Diffs the live feature schema in Redis and Parquet against the feature schema contract registered in MLflow — catches training/serving skew before it causes silent model degradation. Triggers on phrases like "check schema", "schema drift", "training serving skew", "/schema-check", "are features consistent", or "validate feature schema".
 ---
 

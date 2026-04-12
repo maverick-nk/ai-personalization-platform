@@ -1,5 +1,6 @@
 ---
 name: new-feature
+category: workflow
 description: Creates a correctly-named branch, loads the right service CONTEXT.md, and sets up the working context before starting any feature or fix. Use at the start of every implementation task. Triggers on phrases like "start work on", "implement", "begin feature", "new feature", "/new-feature", or when the user names a service and a task together.
 ---
 
