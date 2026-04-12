@@ -75,3 +75,32 @@ Docker + local Kubernetes (kind/minikube), CI/CD via GitHub Actions, load testin
 ## Out of Scope
 
 Deep learning recommenders, RL, federated learning, multi-region HA, complex ranking systems.
+
+---
+
+## Context System
+
+This repo uses a graph-aware context system. Read `_master.md` first on any task, then apply this triage:
+
+**Always load:** `CONTEXT.md` of the service(s) directly named in the task.
+
+**Load a dependency's `CONTEXT.md` only if the task involves:**
+- Adding/changing/removing a call to its API, queue, or data source
+- Changing a contract that dependency relies on (endpoint, event schema, feature schema)
+- Modifying shared config or data structures used across both services
+
+**Skip a dependency's `CONTEXT.md` if the task is:**
+- Refactoring or optimizing logic inside a single service
+- Fixing a bug confirmed to be within one service
+- Adding/modifying unit tests that don't cross service boundaries
+
+**Decision rule:** Would this change break or require awareness from another service? If no → skip. If yes → load.
+
+| Task example | Load |
+|---|---|
+| Optimize Redis lookup in inference-api | inference-api only |
+| Change feature schema in feature-pipeline | feature-pipeline + inference-api + model-training |
+| Fix null check in privacy service | privacy only |
+| Add new Kafka topic in event-ingestion | event-ingestion + feature-pipeline |
+
+**After every task**, run `scripts/update-context.sh <service-name>` for each service touched.
