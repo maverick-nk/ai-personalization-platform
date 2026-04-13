@@ -6,4 +6,5 @@
 
 | # | Title | Service | Date | Status |
 |---|---|---|---|---|
-| *(created automatically as decisions are recorded)* | | | | |
+| 0001 | [KRaft Single-Broker Kafka for Local Development](shared/0001-kraft-single-broker-local-kafka.md) | shared | 2026-04-12 | Accepted |
+| 0002 | [Shared Postgres Instance for MLflow Tracking Backend](shared/0002-shared-postgres-mlflow-tracking.md) | shared | 2026-04-12 | Accepted |
