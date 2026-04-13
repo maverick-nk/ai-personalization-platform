@@ -72,6 +72,30 @@ The test harness (`pytest`) validates:
 
 Docker + local Kubernetes (kind/minikube), CI/CD via GitHub Actions, load testing via k6.
 
+## Python Tooling Convention
+
+All Python services in this repo use **[uv](https://github.com/astral-sh/uv)** as the package manager and script runner. Do not use pip, pip-tools, poetry, or conda.
+
+| Context | Convention |
+|---|---|
+| Dependency management | `pyproject.toml` + `uv.lock` — no `requirements.txt` |
+| Installing deps | `uv sync` (dev) · `uv sync --frozen --no-dev` (Docker/CI) |
+| Running services/scripts | `uv run <command>` |
+| Adding a dependency | `uv add <package>` |
+| Dockerfiles | Copy uv binary from `ghcr.io/astral-sh/uv:latest`; use `uv sync --frozen --no-dev` |
+
+**Does not apply to:** External images we don't control (e.g. `ghcr.io/mlflow/mlflow`) — use pip there.
+
+Dockerfile pattern for every Python service:
+```dockerfile
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev
+CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0"]
+```
+
+---
+
 ## Out of Scope
 
 Deep learning recommenders, RL, federated learning, multi-region HA, complex ranking systems.

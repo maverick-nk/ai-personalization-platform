@@ -1,1 +1,4 @@
 /.idea
+
+# Local environment — never commit
+.env
