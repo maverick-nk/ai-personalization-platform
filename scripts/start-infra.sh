@@ -62,9 +62,32 @@ for svc in "${SERVICES[@]}"; do
   printf "  %-12s healthy\n" "$svc"
 done
 
+# ── Kafka topic bootstrap ──────────────────────────────────────────────────
+# Create platform topics if they don't already exist. Using --if-not-exists
+# makes this idempotent — safe to run on every infra start.
+# Topics are pre-created here so consumers can subscribe and get partition
+# assignments before any producer publishes, avoiding a race condition where
+# auto-create (triggered by the first produce) happens after the consumer
+# has already missed setting its offset.
+KAFKA_TOPICS=(
+  "user.watch.events"
+  "user.session.events"
+)
+
+echo "→ Ensuring Kafka topics exist..."
+for topic in "${KAFKA_TOPICS[@]}"; do
+  docker exec kafka /opt/kafka/bin/kafka-topics.sh \
+    --bootstrap-server localhost:9092 \
+    --create \
+    --topic "$topic" \
+    --partitions 1 \
+    --replication-factor 1 \
+    --if-not-exists 2>/dev/null && printf "  %-30s ok\n" "$topic"
+done
+
 echo ""
 echo "Endpoints:"
-echo "  Kafka     kafka:9092  (internal) / localhost:9092 (host)"
+echo "  Kafka     kafka:9092  (internal) / localhost:29092 (host, EXTERNAL listener)"
 echo "  Redis     redis:6379  (internal) / localhost:6379 (host)"
 echo "  Postgres  postgres:5432           / localhost:5432 (host)"
 echo "  MLflow    http://mlflow:5000      / http://localhost:5001 (host)"

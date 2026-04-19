@@ -8,3 +8,4 @@
 |---|---|---|---|---|
 | 0001 | [KRaft Single-Broker Kafka for Local Development](shared/0001-kraft-single-broker-local-kafka.md) | shared | 2026-04-12 | Accepted |
 | 0002 | [Shared Postgres Instance for MLflow Tracking Backend](shared/0002-shared-postgres-mlflow-tracking.md) | shared | 2026-04-12 | Accepted |
+| 0003 | [Fire-and-Forget Kafka Delivery for Event Ingestion](event-ingestion/0003-fire-and-forget-kafka-delivery.md) | event-ingestion | 2026-04-18 | Accepted |
