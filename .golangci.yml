@@ -1,0 +1,70 @@
+version: "2"
+
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+output:
+  formats:
+    - format: colored-line-number
+  sort-results: true
+
+linters:
+  disable-all: true
+  enable:
+    # Correctness
+    - errcheck
+    - staticcheck
+    - gosimple
+    - unused
+    - ineffassign
+    - typecheck
+    # Style
+    - gofmt
+    - goimports
+    - revive
+    - gocritic
+    # Security
+    - gosec
+    # Complexity
+    - cyclop
+    - gocognit
+    - dupl
+    # Performance
+    - prealloc
+    - bodyclose
+    - noctx
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+  staticcheck:
+    checks: ["all", "-ST1000", "-ST1003"]
+  revive:
+    rules:
+      - name: context-as-argument
+        disabled: false
+      - name: error-strings
+        disabled: false
+      - name: var-naming
+        disabled: false
+  gosec:
+    excludes: ["G104"]
+    confidence: medium
+  cyclop:
+    max-complexity: 15
+  gocognit:
+    min-complexity: 20
+  dupl:
+    threshold: 150
+
+issues:
+  exclude-files:
+    - ".*\\.pb\\.go$"
+    - ".*_grpc\\.pb\\.go$"
+  exclude-rules:
+    - path: "_test\\.go"
+      linters: [gosec, dupl, cyclop, gocognit]
+  max-issues-per-linter: 50
+  max-same-issues: 10
