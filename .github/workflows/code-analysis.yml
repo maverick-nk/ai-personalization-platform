@@ -1,0 +1,114 @@
+name: Code Analysis
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  python-lint:
+    name: Python — Ruff + Bandit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for Python files
+        id: py_check
+        run: |
+          count=$(find services/event-ingestion services/feature-pipeline \
+                       services/model-training services/privacy \
+                  -name "*.py" 2>/dev/null | wc -l)
+          if [ "$count" -gt 0 ]; then
+            echo "has_python=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_python=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip notice (no Python source yet)
+        if: steps.py_check.outputs.has_python == 'false'
+        run: echo "No Python source files found — skipping Ruff and Bandit."
+
+      - uses: astral-sh/setup-uv@v5
+        if: steps.py_check.outputs.has_python == 'true'
+
+      - name: Ruff — lint
+        if: steps.py_check.outputs.has_python == 'true'
+        run: uvx ruff check services/ --config ruff.toml
+
+      - name: Ruff — format check
+        if: steps.py_check.outputs.has_python == 'true'
+        run: uvx ruff format --check services/ --config ruff.toml
+
+      - name: Bandit — security SAST
+        if: steps.py_check.outputs.has_python == 'true'
+        run: |
+          uvx bandit -r services/event-ingestion services/feature-pipeline \
+                        services/model-training services/privacy \
+               --exclude "*/tests/*,*/__pycache__/*" \
+               -f json -o bandit-report.json || true
+          uvx bandit -r services/event-ingestion services/feature-pipeline \
+                        services/model-training services/privacy \
+               --exclude "*/tests/*,*/__pycache__/*" \
+               -ll
+
+      - name: Upload Bandit report
+        if: steps.py_check.outputs.has_python == 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report
+          path: bandit-report.json
+          if-no-files-found: ignore
+
+  go-lint:
+    name: Go — golangci-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for Go files
+        id: go_check
+        run: |
+          count=$(find services/inference-api -name "*.go" 2>/dev/null | wc -l)
+          if [ "$count" -gt 0 ]; then
+            echo "has_go=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_go=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip notice (no Go source yet)
+        if: steps.go_check.outputs.has_go == 'false'
+        run: echo "No Go source files found — skipping golangci-lint."
+
+      - uses: actions/setup-go@v5
+        if: steps.go_check.outputs.has_go == 'true'
+        with:
+          go-version-file: services/inference-api/go.mod
+          cache: true
+
+      - name: golangci-lint
+        if: steps.go_check.outputs.has_go == 'true'
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.62.2
+          working-directory: services/inference-api
+          args: --config ../../.golangci.yml --timeout 5m
+
+  sonarcloud:
+    name: SonarCloud Analysis
+    runs-on: ubuntu-latest
+    needs: [python-lint, go-lint]
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

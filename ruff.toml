@@ -1,0 +1,39 @@
+target-version = "py311"
+line-length = 100
+src = ["services"]
+
+exclude = [
+    ".git",
+    "__pycache__",
+    "*.egg-info",
+    ".venv",
+    "dist",
+    "build",
+]
+
+[lint]
+select = ["E", "W", "F", "I", "N", "UP", "B", "S", "C4", "SIM", "RUF"]
+ignore = [
+    "E501",    # line-too-long — handled by formatter
+    "S101",    # assert — acceptable in tests
+    "S311",    # random — acceptable for ML simulation
+    "B008",    # function calls in defaults — FastAPI pattern
+    "RUF012",  # mutable class attrs — common in Pydantic
+]
+
+[lint.per-file-ignores]
+"**/tests/**/*.py" = ["S101", "S106", "N802"]
+"**/scripts/*.py" = ["S603", "S607"]
+
+[lint.isort]
+known-first-party = ["event_ingestion", "feature_pipeline", "model_training", "privacy"]
+force-sort-within-sections = true
+
+[lint.pep8-naming]
+ignore-names = ["i", "j", "k", "x", "y", "X", "df", "e"]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+magic-trailing-comma = true
+line-ending = "lf"
