@@ -16,17 +16,27 @@ Accepts raw user watch and session events via REST, validates schema, pseudonymi
 
 ## Current State
 
-- Version: not yet implemented
-- API contract: REST
+- Version: 0.1.0
+- API contract: REST (FastAPI)
 - Key behaviors: schema validation, user ID pseudonymization before publish
+- Stack: Python 3.11, FastAPI, pydantic-settings, confluent-kafka
+- Entry point: `uv run uvicorn app.main:app`
 
 ---
 
 ## Architecture Notes
 
+- `app/config.py` — pydantic-settings reads `KAFKA_BOOTSTRAP_SERVERS` (default `localhost:9092`) and `PSEUDONYMIZE_SECRET` (required)
+- `app/pseudonymize.py` — HMAC-SHA256; raw `user_id` is never stored, logged, or published to Kafka
+- `app/producer.py` — fire-and-forget (`poll(0)`); delivery failures logged via callback, do not fail the HTTP request
+- Kafka messages carry `pseudo_user_id` (hex digest), never `user_id`
+- HTTP responses: 202 Accepted on success, 422 on schema violation
+
 ---
 
 ## Recent Changes
+
+- 2026-04-18: Initial implementation — POST /events/watch, POST /events/session, GET /health, unit + integration tests
 
 ---
 

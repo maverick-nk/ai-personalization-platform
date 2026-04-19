@@ -2,3 +2,18 @@
 
 # Local environment — never commit
 .env
+
+# Exclude notes
+notes.txt
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environments (reproduced via `uv sync`)
+.venv/
+
+# Test / tooling caches
+.pytest_cache/
+.ruff_cache/
