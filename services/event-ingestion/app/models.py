@@ -16,6 +16,7 @@ class WatchEvent(BaseModel):
     # corrupting downstream feature computations (e.g. avg_watch_duration).
     watch_pct: float = Field(ge=0.0, le=100.0)
     timestamp: datetime  # Client-reported event time; used for recency scoring in Flink
+    genre: str | None = None  # Optional content genre; used by feature pipeline for category_affinity_score
 
 
 class SessionEvent(BaseModel):

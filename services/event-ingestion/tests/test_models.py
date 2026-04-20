@@ -37,6 +37,18 @@ class TestWatchEvent:
         with pytest.raises(ValidationError):
             WatchEvent(user_id="u1", content_id="c1", watch_pct=50.0, timestamp="not-a-date")
 
+    def test_genre_defaults_to_none(self):
+        e = WatchEvent(user_id="u1", content_id="c1", watch_pct=50.0, timestamp="2026-04-18T10:00:00Z")
+        assert e.genre is None
+
+    def test_genre_accepts_string(self):
+        e = WatchEvent(user_id="u1", content_id="c1", watch_pct=50.0, timestamp="2026-04-18T10:00:00Z", genre="action")
+        assert e.genre == "action"
+
+    def test_genre_accepts_none_explicitly(self):
+        e = WatchEvent(user_id="u1", content_id="c1", watch_pct=50.0, timestamp="2026-04-18T10:00:00Z", genre=None)
+        assert e.genre is None
+
 
 class TestSessionEvent:
     def test_valid(self):
