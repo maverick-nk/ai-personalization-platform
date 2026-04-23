@@ -23,6 +23,15 @@ dev = [
     "confluent-kafka>=2.3",
 ]
 
+# apache-flink-libraries and apache-beam have no ARM64 wheels for these versions
+# and must be built from source. They use legacy setup.py builds that require
+# setuptools<70 (pkg_resources and _distutils_hack are top-level in that range)
+# and wheel. Without these, uv's isolated build environments fail to find them.
+[tool.uv.extra-build-dependencies]
+apache-beam = ["setuptools<70", "wheel"]
+apache-flink-libraries = ["setuptools<70", "wheel"]
+crcmod = ["setuptools<70"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 

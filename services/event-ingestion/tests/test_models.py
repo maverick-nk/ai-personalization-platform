@@ -37,6 +37,14 @@ class TestWatchEvent:
         with pytest.raises(ValidationError):
             WatchEvent(user_id="u1", content_id="c1", watch_pct=50.0, timestamp="not-a-date")
 
+    def test_timezone_defaults_to_none(self):
+        e = WatchEvent(user_id="u1", content_id="c1", watch_pct=50.0, timestamp="2026-04-18T10:00:00Z")
+        assert e.timezone is None
+
+    def test_timezone_accepts_iana_name(self):
+        e = WatchEvent(user_id="u1", content_id="c1", watch_pct=50.0, timestamp="2026-04-18T10:00:00Z", timezone="Asia/Kolkata")
+        assert e.timezone == "Asia/Kolkata"
+
     def test_genre_defaults_to_none(self):
         e = WatchEvent(user_id="u1", content_id="c1", watch_pct=50.0, timestamp="2026-04-18T10:00:00Z")
         assert e.genre is None

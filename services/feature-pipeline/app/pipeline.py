@@ -4,7 +4,7 @@ import glob
 import json
 import os
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 
 from pyflink.common import WatermarkStrategy
 from pyflink.common.serialization import SimpleStringSchema
@@ -30,26 +30,46 @@ from .state import UserFeatureState, WatchRecord
 def _parse_watch_event(json_str: str) -> dict | None:
     try:
         msg = json.loads(json_str)
+        # Normalise the timestamp to a unix float immediately so all downstream
+        # code works with a single numeric type rather than ISO strings.
         ts_str = msg["timestamp"].replace("Z", "+00:00")
         dt = datetime.fromisoformat(ts_str)
         msg["event_time_epoch"] = dt.timestamp()
+        # event_date is derived here once and reused by both the Parquet partition
+        # path and the schema column — avoids recomputing it per feature write.
         msg["event_date"] = dt.strftime("%Y-%m-%d")
         return msg
     except Exception:
+        # Malformed messages are silently dropped. The ingestion API is the schema
+        # enforcement boundary; a bad message here is a pipeline bug, not user error.
         return None
 
 
 class FeatureProcessFunction(KeyedProcessFunction):
-    def __init__(self, cfg: Settings, redis_sink: RedisSink, parquet_sink: ParquetSink) -> None:
+    # Sinks are NOT passed to __init__ — they hold un-picklable objects (threading.Lock,
+    # Redis socket). Flink serializes the function via cloudpickle before shipping it to
+    # the worker; only the Settings config (pure pydantic model) survives the round-trip.
+    # Sinks are created and opened in open(), which runs on the worker after deserialization.
+    def __init__(self, cfg: Settings) -> None:
         super().__init__()
         self._cfg = cfg
-        self._redis_sink = redis_sink
-        self._parquet_sink = parquet_sink
+        self._redis_sink: RedisSink | None = None
+        self._parquet_sink: ParquetSink | None = None
         self._state = None
 
     def open(self, runtime_context: RuntimeContext) -> None:
         descriptor = ValueStateDescriptor("user_feature_state", Types.PICKLED_BYTE_ARRAY())
         self._state = runtime_context.get_state(descriptor)
+        self._redis_sink = RedisSink(self._cfg)
+        self._redis_sink.open(runtime_context)
+        self._parquet_sink = ParquetSink(self._cfg)
+        self._parquet_sink.open(runtime_context)
+
+    def close(self) -> None:
+        if self._redis_sink:
+            self._redis_sink.close()
+        if self._parquet_sink:
+            self._parquet_sink.close()
 
     def process_element(self, value: dict, ctx: KeyedProcessFunction.Context):
         state: UserFeatureState = self._state.value() or UserFeatureState()
@@ -66,74 +86,112 @@ class FeatureProcessFunction(KeyedProcessFunction):
         state.recent_watches.append(record)
 
         if record.genre:
+            # Divide by 100 to normalise watch_pct into [0, 1] before accumulating.
+            # This keeps genre weights proportional to fractional completion rather
+            # than raw percentage points, making the scale consistent with other
+            # decay-based features that also operate in [0, 1].
             state.session_genre_counts[record.genre] = (
-                state.session_genre_counts.get(record.genre, 0.0) + record.watch_pct
+                state.session_genre_counts.get(record.genre, 0.0) + record.watch_pct / 100
             )
 
+        # Evict before computing — this is what enforces the 10-minute event-time
+        # window. We use the incoming event's timestamp as "now" rather than wall
+        # clock so out-of-order events don't corrupt the window boundary.
         cutoff = now_epoch - self._cfg.window_size_seconds
         state.recent_watches = [r for r in state.recent_watches if r.event_time_epoch >= cutoff]
 
         computed_at = time.time()
         pseudo_user_id = value["pseudo_user_id"]
 
-        output = {
-            "pseudo_user_id": pseudo_user_id,
-            "watch_count_10min": str(compute_watch_count_10min(state)),
-            "category_affinity_score": f"{compute_category_affinity_score(state, now_epoch, self._cfg.category_affinity_lambda):.6f}",
-            "avg_watch_duration": f"{compute_avg_watch_duration(state):.6f}",
-            "time_of_day_bucket": compute_time_of_day_bucket(now_epoch),
-            "recency_score": f"{compute_recency_score(state, now_epoch, self._cfg.recency_lambda):.6f}",
-            "session_genre_vector": compute_session_genre_vector(state),
-            "last_event_epoch": f"{now_epoch:.3f}",
-            "computed_at_epoch": f"{computed_at:.3f}",
-            "event_date": value["event_date"],
+        watch_count   = compute_watch_count_10min(state)
+        affinity      = compute_category_affinity_score(state, now_epoch, self._cfg.category_affinity_lambda)
+        avg_duration  = compute_avg_watch_duration(state)
+        tod_bucket    = compute_time_of_day_bucket(now_epoch, value.get("timezone"))
+        recency       = compute_recency_score(state, now_epoch, self._cfg.recency_lambda)
+        genre_vector  = compute_session_genre_vector(state)
+        event_date    = value["event_date"]
+
+        # Redis stores all values as strings (hset mapping requires string values).
+        redis_record = {
+            "pseudo_user_id":           pseudo_user_id,
+            "watch_count_10min":        str(watch_count),
+            "category_affinity_score":  f"{affinity:.6f}",
+            "avg_watch_duration":       f"{avg_duration:.6f}",
+            "time_of_day_bucket":       tod_bucket,
+            "recency_score":            f"{recency:.6f}",
+            "session_genre_vector":     genre_vector,
+            "last_event_epoch":         f"{now_epoch:.3f}",
+            # computed_at_epoch uses wall clock (not event time) so the inference API
+            # and observability stack can measure real feature freshness latency.
+            "computed_at_epoch":        f"{computed_at:.3f}",
+            "event_date":               event_date,
         }
 
-        self._redis_sink.write(output)
-        self._parquet_sink.buffer(output)
+        # Parquet uses typed values matching PARQUET_SCHEMA — PyArrow rejects strings
+        # for int32/float64 columns, so we keep Redis and Parquet records separate.
+        parquet_record = {
+            "pseudo_user_id":           pseudo_user_id,
+            "watch_count_10min":        watch_count,
+            "category_affinity_score":  affinity,
+            "avg_watch_duration":       avg_duration,
+            "time_of_day_bucket":       tod_bucket,
+            "recency_score":            recency,
+            "session_genre_vector":     genre_vector,
+            "last_event_epoch":         now_epoch,
+            "computed_at_epoch":        computed_at,
+            "event_date":               event_date,
+        }
+
+        self._redis_sink.write(redis_record)
+        self._parquet_sink.buffer(parquet_record)
 
         state.last_computed_at_epoch = computed_at
         self._state.update(state)
 
 
 def _find_kafka_connector_jar() -> str | None:
+    # Search order:
+    # 1. connectors/ directory next to the service root (downloaded by make download-connectors)
+    # 2. FLINK_HOME env var opt/ (points to root venv pyflink, set by Makefile)
+    # 3. pyflink package opt/ (fallback for standalone Flink installs)
+    service_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    candidates = [
+        os.path.join(service_root, "connectors", "flink-sql-connector-kafka-*.jar"),
+    ]
+    flink_home = os.environ.get("FLINK_HOME")
+    if flink_home:
+        candidates.append(os.path.join(flink_home, "opt", "flink-sql-connector-kafka-*.jar"))
     try:
-        import apache_flink
-        flink_root = os.path.dirname(apache_flink.__file__)
-        pattern = os.path.join(flink_root, "opt", "flink-sql-connector-kafka-*.jar")
+        import pyflink
+        candidates.append(os.path.join(os.path.dirname(pyflink.__file__), "opt", "flink-sql-connector-kafka-*.jar"))
+    except ImportError:
+        pass
+    for pattern in candidates:
         matches = glob.glob(pattern)
-        return matches[0] if matches else None
-    except Exception:
-        return None
+        if matches:
+            return matches[0]
+    return None
 
 
 def build_pipeline(
     env: StreamExecutionEnvironment,
     settings: Settings | None = None,
-    redis_sink: RedisSink | None = None,
-    parquet_sink: ParquetSink | None = None,
 ) -> None:
     cfg = settings or default_settings
-
-    r_sink = redis_sink or RedisSink(cfg)
-    p_sink = parquet_sink or ParquetSink(cfg)
-
-    # Open sinks here since they're used inside the KeyedProcessFunction,
-    # not wired as standalone Flink operators.
-    r_sink.open(None)
-    p_sink.open(None)
 
     kafka_source = (
         KafkaSource.builder()
         .set_bootstrap_servers(cfg.kafka_bootstrap_servers)
         .set_topics(cfg.kafka_watch_topic)
         .set_group_id(cfg.kafka_consumer_group)
+        # latest: the pipeline processes new events only and does not replay history
+        # on startup. Change to earliest() if historical backfill is ever needed.
         .set_starting_offsets(KafkaOffsetsInitializer.latest())
         .set_value_only_deserializer(SimpleStringSchema())
         .build()
     )
 
-    process_fn = FeatureProcessFunction(cfg, r_sink, p_sink)
+    process_fn = FeatureProcessFunction(cfg)
 
     (
         env
@@ -141,12 +199,17 @@ def build_pipeline(
         .map(_parse_watch_event, output_type=Types.PICKLED_BYTE_ARRAY())
         .filter(lambda x: x is not None)
         .key_by(lambda x: x["pseudo_user_id"])
+        # no_watermarks: event-time windowing is enforced manually inside
+        # process_element using the event's own timestamp, avoiding the latency
+        # introduced by Flink's watermark waiting mechanism.
         .process(process_fn)
     )
 
 
 def main() -> None:
     env = StreamExecutionEnvironment.get_execution_environment()
+    # Parallelism 1 runs the pipeline in a single thread without a Flink cluster.
+    # Sufficient for local dev and the test harness; increase for production.
     env.set_parallelism(1)
 
     connector_jar = _find_kafka_connector_jar()

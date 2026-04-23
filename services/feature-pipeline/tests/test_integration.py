@@ -35,8 +35,6 @@ def pipeline_thread():
 
     from app.config import Settings
     from app.pipeline import _find_kafka_connector_jar, build_pipeline
-    from app.parquet_sink import ParquetSink
-    from app.redis_sink import RedisSink
 
     cfg = Settings(
         kafka_bootstrap_servers=KAFKA_BOOTSTRAP,

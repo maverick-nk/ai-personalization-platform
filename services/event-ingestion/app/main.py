@@ -50,6 +50,7 @@ def ingest_watch(request: Request, event: WatchEvent):
         "watch_pct": event.watch_pct,
         "timestamp": event.timestamp,
         "genre": event.genre,
+        "timezone": event.timezone,
     }
     request.app.state.producer.publish(TOPIC_WATCH, payload)
 

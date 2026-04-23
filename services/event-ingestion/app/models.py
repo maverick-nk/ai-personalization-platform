@@ -17,6 +17,7 @@ class WatchEvent(BaseModel):
     watch_pct: float = Field(ge=0.0, le=100.0)
     timestamp: datetime  # Client-reported event time; used for recency scoring in Flink
     genre: str | None = None  # Optional content genre; used by feature pipeline for category_affinity_score
+    timezone: str | None = None  # IANA tz name (e.g. "America/New_York"); used to derive correct local hour for time_of_day_bucket
 
 
 class SessionEvent(BaseModel):

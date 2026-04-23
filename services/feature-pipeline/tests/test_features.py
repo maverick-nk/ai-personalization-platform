@@ -126,6 +126,32 @@ def test_time_of_day_boundary_morning_start():
     assert compute_time_of_day_bucket(_epoch(6)) == "morning"
 
 
+def test_time_of_day_uses_local_timezone():
+    # 16:30 UTC = 22:00 IST (UTC+5:30) → "night" in IST, "afternoon" in UTC.
+    # Confirms the IANA timezone shifts the bucket correctly.
+    epoch = datetime(2026, 4, 19, 16, 30, 0, tzinfo=timezone.utc).timestamp()
+    assert compute_time_of_day_bucket(epoch, "Asia/Kolkata") == "night"
+    assert compute_time_of_day_bucket(epoch) == "afternoon"  # UTC fallback
+
+
+def test_time_of_day_dst_aware():
+    # 06:00 UTC on a US summer date = 02:00 EDT (UTC-4) → "night", not "morning".
+    # zoneinfo resolves DST automatically; a raw offset of -5 (EST) would give 01:00,
+    # also "night" — but this confirms the IANA name path is exercised.
+    epoch = datetime(2026, 7, 1, 6, 0, 0, tzinfo=timezone.utc).timestamp()
+    assert compute_time_of_day_bucket(epoch, "America/New_York") == "night"
+
+
+def test_time_of_day_invalid_timezone_falls_back_to_utc():
+    epoch = _epoch(8)  # 08:00 UTC → "morning"
+    assert compute_time_of_day_bucket(epoch, "Not/ATimezone") == "morning"
+
+
+def test_time_of_day_none_timezone_falls_back_to_utc():
+    epoch = _epoch(14)  # 14:00 UTC → "afternoon"
+    assert compute_time_of_day_bucket(epoch, None) == "afternoon"
+
+
 # ── recency_score ─────────────────────────────────────────────────────────────
 
 def test_recency_score_empty():
