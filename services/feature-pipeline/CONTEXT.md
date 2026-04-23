@@ -74,7 +74,7 @@ PyFlink is an optional extra in pyproject.toml (`pipeline` extra) because it req
 - Change Redis key pattern or field names without updating inference-api and model-training — schema contract crosses both services
 - Add or rename features without checking inference-api (feature fetch) and model-training (Parquet reader) dependencies
 - Drop the Parquet `event_date` partition column — model-training reads by date partition
-- Rename, retype, or remove fields on `UserFeatureState` or `WatchRecord` without discarding Flink checkpoints first — RowTypeInfo allows additive changes only; structural changes break deserialization (see ADR 0006)
-- Add a field to `UserFeatureState` or `WatchRecord` without updating both `to_row()` / `from_row()` in `state.py` AND the corresponding `Types.ROW_NAMED(...)` descriptor in `pipeline.py` — they are a paired contract; a mismatch silently drops or misaligns fields
+- Rename, retype, or remove fields on `UserFeatureState` or `WatchRecord` without discarding Flink checkpoints first — RowTypeInfo allows additive changes only; structural changes break deserialization (see ADR 0004)
+- Add a field to `UserFeatureState` or `WatchRecord` without updating both `to_row()` / `from_row()` in `state.py` AND the corresponding `Types.ROW_NAMED(...)` descriptor in `pipeline.py` — they are a paired contract; a mismatch silently drops or misaligns fields (see ADR 0004)
 - Add a new sink to the pipeline that is not idempotent — at-least-once delivery means events may be replayed on restart; all sinks must tolerate duplicate writes (see ADR 0005)
 - Read Parquet training data without deduplicating on `(pseudo_user_id, event_time_epoch)` — replayed events from checkpoint recovery can produce duplicate rows (see ADR 0005)
