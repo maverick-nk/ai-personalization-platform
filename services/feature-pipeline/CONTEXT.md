@@ -4,7 +4,7 @@ path: /services/feature-pipeline/
 status: active
 depends_on: [kafka*, redis*, parquet*]
 depended_on_by: [inference-api, model-training]
-last_updated: 2026-04-19
+last_updated: 2026-04-23
 ---
 
 # Service: feature-pipeline
@@ -42,6 +42,7 @@ PyFlink is an optional extra in pyproject.toml (`pipeline` extra) because it req
 
 ## Recent Changes
 
+- 2026-04-23: Hardened pipeline — switched state serialization from PICKLED_BYTE_ARRAY to RowTypeInfo, moved Redis string encoding into RedisSink, fixed ParquetSink lock pattern (drain-then-write), added Flink checkpointing (60s), fixed session_genre_counts to rebuild from eviction window; 29 unit + 3 integration tests passing
 - 2026-04-19: Initial implementation (Step 2)
   - Added `genre: str | None` to WatchEvent in event-ingestion (backward-compatible)
   - Created feature-pipeline service with all 6 features, Redis sink, Parquet sink
@@ -49,6 +50,10 @@ PyFlink is an optional extra in pyproject.toml (`pipeline` extra) because it req
 ---
 
 ## Flags
+
+⚑ PRODUCTIONIZATION — Event-time windowing: current 10-min window eviction uses `time.time()` (processing time), not Flink watermarks. Late-arriving events (e.g. mobile buffering) may be incorrectly evicted. Switch to native event-time windowing with `WatermarkStrategy` when moving to production with real mobile clients.
+
+⚑ PRODUCTIONIZATION — Stateful rebalancing: per-user `ValueState` lives in the local task manager. If parallelism > 1 or a second pipeline instance starts, Kafka triggers a rebalance and the new instance starts with empty state for reassigned partitions (feature windows reset). Fix by migrating to a remote state backend (RocksDB + S3/GCS) before scaling beyond a single instance.
 
 ---
 
