@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import glob
 import json
+import logging
 import os
 import time
 from datetime import datetime
@@ -26,10 +27,29 @@ from .parquet_sink import ParquetSink
 from .redis_sink import RedisSink
 from .state import UserFeatureState, WatchRecord
 
+log = logging.getLogger(__name__)
+
+_REQUIRED_EVENT_FIELDS = {"pseudo_user_id", "content_id", "watch_pct", "timestamp"}
+
 
 def _parse_watch_event(json_str: str) -> dict | None:
     try:
         msg = json.loads(json_str)
+    except json.JSONDecodeError:
+        log.warning("Dropping non-JSON Kafka message: %.200s", json_str)
+        return None
+
+    missing = _REQUIRED_EVENT_FIELDS - msg.keys()
+    if missing:
+        log.warning("Dropping event missing required fields %s", missing)
+        return None
+
+    watch_pct = msg["watch_pct"]
+    if not isinstance(watch_pct, (int, float)) or not (0.0 <= watch_pct <= 100.0):
+        log.warning("Dropping event with out-of-range watch_pct=%r", watch_pct)
+        return None
+
+    try:
         # Normalise the timestamp to a unix float immediately so all downstream
         # code works with a single numeric type rather than ISO strings.
         ts_str = msg["timestamp"].replace("Z", "+00:00")
@@ -39,9 +59,8 @@ def _parse_watch_event(json_str: str) -> dict | None:
         # path and the schema column — avoids recomputing it per feature write.
         msg["event_date"] = dt.strftime("%Y-%m-%d")
         return msg
-    except Exception:
-        # Malformed messages are silently dropped. The ingestion API is the schema
-        # enforcement boundary; a bad message here is a pipeline bug, not user error.
+    except (ValueError, AttributeError):
+        log.warning("Dropping event with unparseable timestamp: %r", msg.get("timestamp"))
         return None
 
 
@@ -85,20 +104,26 @@ class FeatureProcessFunction(KeyedProcessFunction):
 
         state.recent_watches.append(record)
 
-        if record.genre:
-            # Divide by 100 to normalise watch_pct into [0, 1] before accumulating.
-            # This keeps genre weights proportional to fractional completion rather
-            # than raw percentage points, making the scale consistent with other
-            # decay-based features that also operate in [0, 1].
-            state.session_genre_counts[record.genre] = (
-                state.session_genre_counts.get(record.genre, 0.0) + record.watch_pct / 100
-            )
-
         # Evict before computing — this is what enforces the 10-minute event-time
         # window. We use the incoming event's timestamp as "now" rather than wall
         # clock so out-of-order events don't corrupt the window boundary.
         cutoff = now_epoch - self._cfg.window_size_seconds
         state.recent_watches = [r for r in state.recent_watches if r.event_time_epoch >= cutoff]
+
+        # Rebuild session_genre_counts from the surviving window rather than
+        # incrementally updating it. This keeps session_genre_vector consistent
+        # with the same 10-minute window as all other features — an incremental
+        # approach would let evicted records' genre contributions linger indefinitely.
+        state.session_genre_counts = {}
+        for r in state.recent_watches:
+            if r.genre:
+                # Divide by 100 to normalise watch_pct into [0, 1] before accumulating.
+                # This keeps genre weights proportional to fractional completion rather
+                # than raw percentage points, making the scale consistent with other
+                # decay-based features that also operate in [0, 1].
+                state.session_genre_counts[r.genre] = (
+                    state.session_genre_counts.get(r.genre, 0.0) + r.watch_pct / 100
+                )
 
         computed_at = time.time()
         pseudo_user_id = value["pseudo_user_id"]
@@ -185,14 +210,28 @@ def build_pipeline(
 
 
 def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+
     env = StreamExecutionEnvironment.get_execution_environment()
     # Parallelism 1 runs the pipeline in a single thread without a Flink cluster.
     # Sufficient for local dev and the test harness; increase for production.
     env.set_parallelism(1)
+    # Checkpointing commits Kafka consumer offsets alongside Flink state. On restart,
+    # the pipeline resumes from the last checkpoint rather than latest, preventing
+    # event loss during planned restarts or crashes.
+    env.enable_checkpointing(60_000)
 
     connector_jar = _find_kafka_connector_jar()
     if connector_jar:
         env.add_jars(f"file://{connector_jar}")
+    else:
+        log.warning(
+            "Kafka connector JAR not found — run 'make download-connectors' before starting. "
+            "Pipeline will fail when KafkaSource is initialised."
+        )
 
     build_pipeline(env)
     env.execute("feature-pipeline")

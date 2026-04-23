@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import logging
 import threading
 import time
+import uuid
 from collections import defaultdict
 from pathlib import Path
 
@@ -9,6 +11,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from .config import Settings
+
+log = logging.getLogger(__name__)
 
 # Schema is declared here and used by both the sink (writer) and model-training
 # (reader) to enforce that the offline store and online store (Redis) carry
@@ -43,6 +47,7 @@ class ParquetSink:
         self._last_flush_time = time.monotonic()
 
     def buffer(self, record: dict) -> None:
+        records_to_write: list[dict] = []
         with self._lock:
             self._buffer.append(record)
             elapsed = time.monotonic() - self._last_flush_time
@@ -52,17 +57,19 @@ class ParquetSink:
                 len(self._buffer) >= self._settings.parquet_flush_batch_size
                 or elapsed >= self._settings.parquet_flush_interval_seconds
             ):
-                self._flush_locked()
+                records_to_write = self._drain_locked()
+        # I/O happens outside the lock so incoming buffer() calls are not blocked
+        # for the full duration of a file write.
+        if records_to_write:
+            self._write_parquet(records_to_write)
 
-    def _flush_locked(self) -> None:
-        # Caller must hold self._lock. Copy-and-clear before doing I/O so the
-        # lock is held for as short a time as possible.
-        if not self._buffer:
-            return
+    def _drain_locked(self) -> list[dict]:
+        # Caller must hold self._lock. Copies and clears the buffer so the lock
+        # is released before the actual file write begins.
         records = self._buffer[:]
         self._buffer.clear()
         self._last_flush_time = time.monotonic()
-        self._write_parquet(records)
+        return records
 
     def _write_parquet(self, records: list[dict]) -> None:
         # A single flush batch may span midnight — group by event_date so each
@@ -81,14 +88,23 @@ class ParquetSink:
             )
             partition_path.mkdir(parents=True, exist_ok=True)
 
-            # Millisecond timestamp in filename prevents collisions when multiple
-            # flushes land in the same partition within one second.
-            filename = f"batch_{int(time.time() * 1000)}.parquet"
-            table = pa.Table.from_pylist(date_records, schema=PARQUET_SCHEMA)
-            pq.write_table(table, partition_path / filename, compression="snappy")
+            # UUID filename prevents collisions when multiple workers or rapid flushes
+            # land in the same partition — unlike a ms timestamp, UUIDs are globally unique.
+            filename = f"batch_{uuid.uuid4().hex}.parquet"
+            try:
+                table = pa.Table.from_pylist(date_records, schema=PARQUET_SCHEMA)
+                pq.write_table(table, partition_path / filename, compression="snappy")
+                log.debug("Wrote %d records to %s", len(date_records), partition_path / filename)
+            except Exception:
+                log.exception(
+                    "Failed to write Parquet batch (%d records) to %s",
+                    len(date_records), partition_path / filename,
+                )
 
     def close(self) -> None:
         # Final flush on shutdown ensures buffered records aren't lost when the
         # pipeline stops cleanly (e.g. during a rolling restart).
         with self._lock:
-            self._flush_locked()
+            records = self._drain_locked()
+        if records:
+            self._write_parquet(records)
