@@ -31,6 +31,22 @@ log = logging.getLogger(__name__)
 
 _REQUIRED_EVENT_FIELDS = {"pseudo_user_id", "content_id", "watch_pct", "timestamp"}
 
+# Typed state descriptors — replacing PICKLED_BYTE_ARRAY so Flink's web UI,
+# State Processor API, and savepoint migration tooling can inspect state values.
+# Field order here must match the positional Row construction in state.py to_row().
+_WATCH_RECORD_TYPE = Types.ROW_NAMED(
+    ["content_id", "watch_pct", "event_time_epoch", "genre"],
+    [Types.STRING(), Types.DOUBLE(), Types.DOUBLE(), Types.STRING()],
+)
+_USER_FEATURE_STATE_TYPE = Types.ROW_NAMED(
+    ["recent_watches", "session_genre_counts", "last_computed_at_epoch"],
+    [
+        Types.LIST(_WATCH_RECORD_TYPE),
+        Types.MAP(Types.STRING(), Types.DOUBLE()),
+        Types.DOUBLE(),
+    ],
+)
+
 
 def _parse_watch_event(json_str: str) -> dict | None:
     try:
@@ -77,7 +93,7 @@ class FeatureProcessFunction(KeyedProcessFunction):
         self._state = None
 
     def open(self, runtime_context: RuntimeContext) -> None:
-        descriptor = ValueStateDescriptor("user_feature_state", Types.PICKLED_BYTE_ARRAY())
+        descriptor = ValueStateDescriptor("user_feature_state", _USER_FEATURE_STATE_TYPE)
         self._state = runtime_context.get_state(descriptor)
         self._redis_sink = RedisSink(self._cfg)
         self._redis_sink.open(runtime_context)
@@ -91,7 +107,8 @@ class FeatureProcessFunction(KeyedProcessFunction):
             self._parquet_sink.close()
 
     def process_element(self, value: dict, ctx: KeyedProcessFunction.Context):
-        state: UserFeatureState = self._state.value() or UserFeatureState()
+        raw = self._state.value()
+        state: UserFeatureState = UserFeatureState.from_row(raw) if raw is not None else UserFeatureState()
 
         now_epoch: float = value["event_time_epoch"]
 
@@ -149,7 +166,7 @@ class FeatureProcessFunction(KeyedProcessFunction):
         self._parquet_sink.buffer(output)
 
         state.last_computed_at_epoch = computed_at
-        self._state.update(state)
+        self._state.update(state.to_row())
 
 
 def _find_kafka_connector_jar() -> str | None:
