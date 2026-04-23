@@ -103,47 +103,25 @@ class FeatureProcessFunction(KeyedProcessFunction):
         computed_at = time.time()
         pseudo_user_id = value["pseudo_user_id"]
 
-        watch_count   = compute_watch_count_10min(state)
-        affinity      = compute_category_affinity_score(state, now_epoch, self._cfg.category_affinity_lambda)
-        avg_duration  = compute_avg_watch_duration(state)
-        tod_bucket    = compute_time_of_day_bucket(now_epoch, value.get("timezone"))
-        recency       = compute_recency_score(state, now_epoch, self._cfg.recency_lambda)
-        genre_vector  = compute_session_genre_vector(state)
-        event_date    = value["event_date"]
-
-        # Redis stores all values as strings (hset mapping requires string values).
-        redis_record = {
+        # Single typed record — RedisSink converts values to strings internally
+        # (Redis protocol requirement); ParquetSink uses the types as-is against PARQUET_SCHEMA.
+        output = {
             "pseudo_user_id":           pseudo_user_id,
-            "watch_count_10min":        str(watch_count),
-            "category_affinity_score":  f"{affinity:.6f}",
-            "avg_watch_duration":       f"{avg_duration:.6f}",
-            "time_of_day_bucket":       tod_bucket,
-            "recency_score":            f"{recency:.6f}",
-            "session_genre_vector":     genre_vector,
-            "last_event_epoch":         f"{now_epoch:.3f}",
+            "watch_count_10min":        compute_watch_count_10min(state),
+            "category_affinity_score":  compute_category_affinity_score(state, now_epoch, self._cfg.category_affinity_lambda),
+            "avg_watch_duration":       compute_avg_watch_duration(state),
+            "time_of_day_bucket":       compute_time_of_day_bucket(now_epoch, value.get("timezone")),
+            "recency_score":            compute_recency_score(state, now_epoch, self._cfg.recency_lambda),
+            "session_genre_vector":     compute_session_genre_vector(state),
+            "last_event_epoch":         now_epoch,
             # computed_at_epoch uses wall clock (not event time) so the inference API
             # and observability stack can measure real feature freshness latency.
-            "computed_at_epoch":        f"{computed_at:.3f}",
-            "event_date":               event_date,
-        }
-
-        # Parquet uses typed values matching PARQUET_SCHEMA — PyArrow rejects strings
-        # for int32/float64 columns, so we keep Redis and Parquet records separate.
-        parquet_record = {
-            "pseudo_user_id":           pseudo_user_id,
-            "watch_count_10min":        watch_count,
-            "category_affinity_score":  affinity,
-            "avg_watch_duration":       avg_duration,
-            "time_of_day_bucket":       tod_bucket,
-            "recency_score":            recency,
-            "session_genre_vector":     genre_vector,
-            "last_event_epoch":         now_epoch,
             "computed_at_epoch":        computed_at,
-            "event_date":               event_date,
+            "event_date":               value["event_date"],
         }
 
-        self._redis_sink.write(redis_record)
-        self._parquet_sink.buffer(parquet_record)
+        self._redis_sink.write(output)
+        self._parquet_sink.buffer(output)
 
         state.last_computed_at_epoch = computed_at
         self._state.update(state)
