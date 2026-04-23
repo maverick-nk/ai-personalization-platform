@@ -95,6 +95,7 @@ async def test_watch_event_reaches_kafka(client, kafka_consumer):
             "content_id": "mov-integration-1",
             "watch_pct": 42.5,
             "timestamp": "2026-04-18T10:00:00Z",
+            "genre": "action",
         },
     )
     assert response.status_code == 202
@@ -121,6 +122,7 @@ async def test_watch_event_reaches_kafka(client, kafka_consumer):
     assert msg["pseudo_user_id"] == expected_pseudo
     assert msg["content_id"] == "mov-integration-1"
     assert msg["watch_pct"] == 42.5
+    assert msg["genre"] == "action"
 
 
 @pytest.mark.asyncio
@@ -162,6 +164,44 @@ async def test_session_event_reaches_kafka(client, kafka_consumer):
     assert msg["pseudo_user_id"] == expected_pseudo
     assert msg["session_id"] == "sess-001"
     assert msg["device"] == "smart-tv"
+
+
+@pytest.mark.asyncio
+async def test_watch_event_without_genre_reaches_kafka(client, kafka_consumer):
+    from app.pseudonymize import pseudonymize
+
+    user_id = f"integration-user-{uuid.uuid4().hex}"
+    expected_pseudo = pseudonymize(user_id, SECRET)
+
+    kafka_consumer.subscribe(["user.watch.events"])
+
+    response = await client.post(
+        "/events/watch",
+        json={
+            "user_id": user_id,
+            "content_id": "mov-no-genre",
+            "watch_pct": 10.0,
+            "timestamp": "2026-04-18T10:00:00Z",
+        },
+    )
+    assert response.status_code == 202
+
+    msg = None
+    deadline = time.time() + 10
+    while time.time() < deadline:
+        m = kafka_consumer.poll(0.5)
+        if m is None:
+            continue
+        if m.error() and m.error().code() != KafkaError._PARTITION_EOF:
+            pytest.fail(f"Kafka consumer error: {m.error()}")
+        if m.value():
+            parsed = json.loads(m.value())
+            if parsed.get("pseudo_user_id") == expected_pseudo:
+                msg = parsed
+                break
+
+    assert msg is not None, "No message received on user.watch.events within timeout"
+    assert msg.get("genre") is None
 
 
 @pytest.mark.asyncio
