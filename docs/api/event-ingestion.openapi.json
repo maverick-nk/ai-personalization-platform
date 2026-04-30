@@ -1,0 +1,266 @@
+warning: `VIRTUAL_ENV=/Users/niranjankumawat/Documents/Work/projects/ai-personalization-platform-bot/.venv` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Event Ingestion API",
+    "description": "\nIngestion boundary for raw user interaction events. Accepts watch and session events\nfrom client applications, pseudonymizes user identifiers, validates payloads, and\npublishes to Kafka for downstream processing by the streaming feature pipeline.\n\n## Pseudonymization\n\nAll endpoints accept a raw `user_id` and replace it with an HMAC-SHA256 digest\nbefore the event leaves this service. The raw identifier **never appears in Kafka\ntopics, Redis, Parquet files, or logs** \u2014 only the hex digest (`pseudo_user_id`)\ntravels downstream.\n\nThe digest is deterministic: the same `user_id` + secret always produces the same\n`pseudo_user_id`, so feature lookups in Redis and consent checks in the privacy\nservice remain consistent across services without sharing the raw identifier.\n\n## Delivery Semantics\n\nEvents are published fire-and-forget (ADR 0003). A `202 Accepted` response means\nthe event was handed to the Kafka producer buffer, not that it was acknowledged by\nthe broker. Callers should not retry on `202` \u2014 the producer handles retries\ninternally up to its configured retry limit.\n",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/events/watch": {
+      "post": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Ingest a watch event",
+        "description": "Records a single content watch interaction. The raw `user_id` is pseudonymized before the event is published \u2014 it never appears in Kafka or any downstream store.\n\n**Delivery:** fire-and-forget. `202 Accepted` means the event entered the producer buffer; broker acknowledgement is not awaited. Do not retry on `202`.\n\n**Downstream:** the Flink feature pipeline consumes `user.watch.events` and updates `watch_count_10min`, `avg_watch_duration`, `category_affinity_score`, and `recency_score` in Redis within ~2 seconds of ingestion.",
+        "operationId": "ingest_watch_events_watch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchEvent"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Event accepted for asynchronous delivery to Kafka.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/events/session": {
+      "post": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Ingest a session event",
+        "description": "Records the start of a user viewing session. The raw `user_id` is pseudonymized before the event is published \u2014 it never appears in Kafka or any downstream store.\n\n**Delivery:** fire-and-forget. `202 Accepted` means the event entered the producer buffer; broker acknowledgement is not awaited. Do not retry on `202`.\n\n**Downstream:** the Flink feature pipeline consumes `user.session.events` and updates `session_genre_vector` and `time_of_day_bucket` in Redis within ~2 seconds of ingestion.",
+        "operationId": "ingest_session_events_session_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionEvent"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Event accepted for asynchronous delivery to Kafka.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AcceptedResponse": {
+        "properties": {
+          "accepted": {
+            "type": "boolean",
+            "title": "Accepted",
+            "description": "Always true. Indicates the event was accepted for asynchronous delivery to Kafka. Does not guarantee broker acknowledgement \u2014 see fire-and-forget delivery semantics (ADR 0003)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "accepted"
+        ],
+        "title": "AcceptedResponse"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "SessionEvent": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id",
+            "description": "Raw user identifier. Pseudonymized internally using HMAC-SHA256 before publication \u2014 the raw value never appears in Kafka, Redis, Parquet, or logs."
+          },
+          "session_id": {
+            "type": "string",
+            "title": "Session Id",
+            "description": "Unique session handle. Used to correlate watch events that occurred within the same viewing session."
+          },
+          "device": {
+            "type": "string",
+            "title": "Device",
+            "description": "Device type for this session (e.g. 'mobile', 'smart-tv', 'web'). Used as a contextual signal in the recommendation model."
+          },
+          "start_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Start Time",
+            "description": "Session start time (ISO 8601). Used with the user's timezone to derive the `time_of_day_bucket` feature."
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "session_id",
+          "device",
+          "start_time"
+        ],
+        "title": "SessionEvent",
+        "description": "Represents the start of a user viewing session.\n\nUsed by the feature pipeline to compute session-level features such as\n`session_genre_vector` and `time_of_day_bucket`."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "WatchEvent": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id",
+            "description": "Raw user identifier. Pseudonymized internally using HMAC-SHA256 before publication \u2014 the raw value never appears in Kafka, Redis, Parquet, or logs."
+          },
+          "content_id": {
+            "type": "string",
+            "title": "Content Id",
+            "description": "Platform content identifier (movie ID, episode ID, etc.)."
+          },
+          "watch_pct": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Watch Pct",
+            "description": "Percentage of the content watched, in the range [0, 100]. Bounded at ingestion to prevent corrupt values from skewing downstream feature computations such as `avg_watch_duration`."
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp",
+            "description": "Client-reported time of the watch event (ISO 8601). Used by the Flink feature pipeline to compute recency-weighted features."
+          },
+          "genre": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Genre",
+            "description": "Content genre (e.g. 'drama', 'comedy'). Optional \u2014 omit if unknown. Used by the feature pipeline to update `category_affinity_score`."
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone",
+            "description": "IANA time zone name for the user's local time (e.g. 'America/New_York'). Used to map the event timestamp to a local hour for the `time_of_day_bucket` feature."
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "content_id",
+          "watch_pct",
+          "timestamp"
+        ],
+        "title": "WatchEvent",
+        "description": "Represents a single content watch interaction from the client.\n\nValidated by Pydantic before the event reaches the Kafka producer \u2014 malformed\nevents are rejected with 422 at the API boundary, never published to the topic."
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "events",
+      "description": "Ingest watch and session events from client applications."
+    }
+  ]
+}
