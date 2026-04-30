@@ -1,0 +1,321 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Privacy Service",
+    "description": "\nConsent enforcement layer for the AI personalization platform.\n\nMaintains a Postgres-backed **consent table** (current state, one row per user) and an\nappend-only **audit log** (full change history, partitioned by month with a configurable\nretention window).\n\nThe inference-api calls the [internal consent check](#tag/internal/GET/internal/consent/check/{pseudo_id})\nbefore every feature fetch. Revocation takes effect on the next request \u2014 consent state\nis never cached by the inference-api.\n\n## Pseudonymization\n\nAll public endpoints accept a raw `user_id` and pseudonymize it internally using\nHMAC-SHA256 with a shared secret. Raw user identifiers never appear in the database,\nlogs, or API responses \u2014 only the hex digest (`user_pseudo_id`) is stored.\n\nThe internal endpoint accepts a `pseudo_id` directly because the inference-api already\nholds the pseudonymized form (it reads Redis keys of the form `user:{pseudo_id}:features`).\n\n## Audit Log Retention\n\nAudit history is retained for `AUDIT_RETENTION_MONTHS` months (default: 3). Expired\nmonthly partitions are dropped at service startup. Consent state is never purged \u2014\nonly the change history ages out.\n",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/privacy/consent/{user_id}": {
+      "patch": {
+        "tags": [
+          "consent"
+        ],
+        "summary": "Grant or revoke consent",
+        "description": "Updates personalization consent for the given user. The raw `user_id` is pseudonymized internally \u2014 it never appears in the database or response. \n\n**Atomicity:** the consent upsert and audit log entry are written in a single transaction. Either both succeed or neither does \u2014 the audit trail can never fall out of sync with consent state.\n\n**Immediacy:** revocation takes effect on the next inference request. The inference-api checks this service on every call with no caching.",
+        "operationId": "update_consent_privacy_consent__user_id__patch",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsentUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated consent record, including the pseudonymized user ID and change timestamp.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/privacy/audit/{user_id}": {
+      "get": {
+        "tags": [
+          "consent"
+        ],
+        "summary": "Get consent change history",
+        "description": "Returns the full GRANT/REVOKE history for the given user in reverse-chronological order (most recent change first). \n\nThe raw `user_id` is pseudonymized before the database lookup \u2014 the audit log stores only the pseudonymized form, so raw identifiers are never exposed. \n\n**Retention:** history is available for the configured retention window (default 3 months). Entries older than that are dropped when expired monthly partitions are cleaned up at service startup. An empty list is returned if the user has no consent history within the window.",
+        "operationId": "get_audit_privacy_audit__user_id__get",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Audit log entries ordered newest first. Empty list if no history exists.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AuditLogEntry"
+                  },
+                  "title": "Response Get Audit Privacy Audit  User Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/consent/check/{pseudo_id}": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Check consent (inference-api use only)",
+        "description": "Called by the inference-api before every feature fetch. Returns the current consent state for the given pseudonymized user ID. \n\n**Why `pseudo_id` and not raw `user_id`?** The inference-api already holds the pseudonymized form \u2014 it reads Redis keys of the form `user:{pseudo_id}:features`. Accepting the raw ID here would require the inference-api to know the HMAC secret, which would violate the pseudonymization boundary. \n\n**Opt-in model:** a missing consent record is treated as denied. Users must explicitly grant consent before receiving personalized recommendations. \n\n**Latency contract:** this endpoint must respond in under 5ms \u2014 it sits in the critical path of every recommendation request (50ms end-to-end budget).",
+        "operationId": "check_consent_internal_consent_check__pseudo_id__get",
+        "parameters": [
+          {
+            "name": "pseudo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pseudo Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current consent state. False if no record exists.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsentCheckResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AuditLogEntry": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "title": "Action",
+            "description": "GRANT or REVOKE."
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp",
+            "description": "When the consent change occurred (UTC)."
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Context provided at the time of the change, if any."
+          }
+        },
+        "type": "object",
+        "required": [
+          "action",
+          "timestamp",
+          "reason"
+        ],
+        "title": "AuditLogEntry"
+      },
+      "ConsentCheckResponse": {
+        "properties": {
+          "consent_granted": {
+            "type": "boolean",
+            "title": "Consent Granted",
+            "description": "Whether the user currently has active personalization consent. False if no consent record exists \u2014 consent is denied by default (opt-in model)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "consent_granted"
+        ],
+        "title": "ConsentCheckResponse"
+      },
+      "ConsentResponse": {
+        "properties": {
+          "user_pseudo_id": {
+            "type": "string",
+            "title": "User Pseudo Id",
+            "description": "HMAC-SHA256 digest of the raw user_id. The raw identifier is never stored, logged, or returned \u2014 only this pseudonymized form appears in the database."
+          },
+          "consent_granted": {
+            "type": "boolean",
+            "title": "Consent Granted",
+            "description": "Consent state after this update."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "Timestamp of this change in UTC. Matches the corresponding audit log entry exactly \u2014 both rows share the same timestamp to make forensic tracing unambiguous."
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_pseudo_id",
+          "consent_granted",
+          "updated_at"
+        ],
+        "title": "ConsentResponse"
+      },
+      "ConsentUpdateRequest": {
+        "properties": {
+          "consent_granted": {
+            "type": "boolean",
+            "title": "Consent Granted",
+            "description": "True to grant personalization consent, false to revoke it."
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Optional human-readable context for this change \u2014 e.g. 'GDPR Article 17 erasure request', 'user-initiated via settings page'. Omit for automated flows; most useful when a person or compliance process triggers the change."
+          }
+        },
+        "type": "object",
+        "required": [
+          "consent_granted"
+        ],
+        "title": "ConsentUpdateRequest"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "consent",
+      "description": "Grant or revoke personalization consent and retrieve audit history."
+    },
+    {
+      "name": "internal",
+      "description": "Endpoints called by internal services only. The inference-api calls the consent check before every feature fetch. Not intended for external clients."
+    }
+  ]
+}

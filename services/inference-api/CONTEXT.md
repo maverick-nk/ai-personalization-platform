@@ -47,4 +47,7 @@ Serves real-time personalized recommendations. Checks consent via privacy servic
 ---
 
 ## Do Not
-<!-- Constraints will be added as contracts are frozen during development -->
+- Do not cache consent state — always call the privacy service fresh on every request; a cache reintroduces stale-consent risk (see ADR 0007)
+- Do not treat privacy service errors or timeouts as granted — fail closed: return the trending fallback, not a 5xx (see ADR 0007)
+- Do not leave the privacy service HTTP call without an explicit timeout — an unbounded wait cascades into a latency breach on every request
+- Do not bypass the consent check before feature fetch — even for performance reasons; compliance requires the gate runs first

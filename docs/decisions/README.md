@@ -11,3 +11,5 @@
 | 0003 | [Fire-and-Forget Kafka Delivery for Event Ingestion](event-ingestion/0003-fire-and-forget-kafka-delivery.md) | event-ingestion | 2026-04-18 | Accepted |
 | 0004 | [RowTypeInfo for Flink Per-User State Serialization](feature-pipeline/0004-flink-state-serialization.md) | feature-pipeline | 2026-04-22 | Accepted |
 | 0005 | [At-Least-Once Delivery via Flink Checkpointing + Kafka Latest Offsets](feature-pipeline/0005-at-least-once-checkpointing-kafka-offsets.md) | feature-pipeline | 2026-04-22 | Accepted |
+| 0006 | [Audit Log Range Partitioning with Monthly TTL](privacy/0006-audit-log-range-partitioning.md) | privacy | 2026-04-29 | Accepted |
+| 0007 | [Fail Closed When Privacy Service Is Unreachable](inference-api/0007-fail-closed-on-privacy-unavailable.md) | inference-api | 2026-04-30 | Accepted |
