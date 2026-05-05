@@ -9,7 +9,6 @@ dependencies = [
     "pandas",
     "scikit-learn",
     "pydantic-settings",
-    "setuptools>=82.0.1",
 ]
 
 [dependency-groups]

@@ -29,8 +29,12 @@ class BaseTrainer(ABC):
         ...
 
     @abstractmethod
-    def log_to_mlflow(self, artifact_path: str) -> None:
-        """Log the fitted model to the active MLflow run using the appropriate flavour."""
+    def log_to_mlflow(self, artifact_path: str, X_example: pd.DataFrame | None = None) -> None:
+        """Log the fitted model to the active MLflow run using the appropriate flavour.
+
+        X_example, if provided, is used to infer and log the model signature so
+        the inference API can validate feature shapes at load time.
+        """
         ...
 
     @abstractmethod

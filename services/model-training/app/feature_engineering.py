@@ -9,6 +9,12 @@ log = logging.getLogger(__name__)
 
 # Base feature columns that map 1-to-1 from Parquet → training matrix.
 # Order is intentional: schema contract preserves this ordering.
+# avg_watch_duration is intentionally included as a feature even though it is also
+# the source of the engaged label. On synthetic data this produces AUC ≈ 1.0 because
+# the model can trivially reconstruct the label. On real data it remains a valid
+# feature (completion rate is a genuine engagement signal at inference time since
+# it is read from Redis, not derived from the label). Remove it here if label leakage
+# becomes a concern during model evaluation on production data.
 BASE_FEATURE_COLS = [
     "watch_count_10min",
     "category_affinity_score",

@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import logging
 
+import lightgbm as lgb
 import mlflow.lightgbm
 import numpy as np
 import pandas as pd
 from lightgbm import LGBMClassifier
+
+_EARLY_STOPPING_ROUNDS = 20
 
 from app.trainer import BaseTrainer
 
@@ -33,6 +36,7 @@ class LightGBMTrainer(BaseTrainer):
             y_train,
             eval_set=[(X_val, y_val)],
             categorical_feature=cat_cols,
+            callbacks=[lgb.early_stopping(_EARLY_STOPPING_ROUNDS, verbose=False)],
         )
         log.info("LightGBM training complete. Best iteration: %s", self._model.best_iteration_)
 
@@ -40,9 +44,16 @@ class LightGBMTrainer(BaseTrainer):
         assert self._model is not None, "call fit() before predict_proba()"
         return self._model.predict_proba(X)[:, 1]
 
-    def log_to_mlflow(self, artifact_path: str) -> None:
+    def log_to_mlflow(self, artifact_path: str, X_example: pd.DataFrame | None = None) -> None:
         assert self._model is not None, "call fit() before log_to_mlflow()"
-        mlflow.lightgbm.log_model(self._model.booster_, artifact_path=artifact_path)
+        from mlflow.models.signature import infer_signature
+        signature = infer_signature(X_example, self._model.predict_proba(X_example)[:, 1]) if X_example is not None else None
+        mlflow.lightgbm.log_model(
+            self._model.booster_,
+            artifact_path=artifact_path,
+            signature=signature,
+            input_example=X_example.iloc[:3] if X_example is not None else None,
+        )
 
     def feature_importances(self) -> dict[str, float]:
         assert self._model is not None, "call fit() before feature_importances()"

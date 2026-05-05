@@ -7,6 +7,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import mlflow
+from mlflow.entities import LifecycleStage
 import numpy as np
 import pandas as pd
 from sklearn.metrics import roc_auc_score
@@ -53,7 +54,6 @@ def _get_or_create_experiment(client: mlflow.tracking.MlflowClient, name: str) -
     store regardless of the server's --default-artifact-root setting, so the
     experiment works correctly when running both inside and outside Docker.
     """
-    from mlflow.entities import LifecycleStage
     experiment = client.get_experiment_by_name(name)
     if experiment is not None and experiment.lifecycle_stage == LifecycleStage.ACTIVE:
         return experiment.experiment_id
@@ -122,7 +122,7 @@ def train_and_register(settings: Settings) -> str:
 
         log.info("Evaluation — AUC: %.4f, Precision@%d: %.4f", auc, _PRECISION_AT_K, p_at_k)
 
-        trainer.log_to_mlflow(artifact_path="model")
+        trainer.log_to_mlflow(artifact_path="model", X_example=X_val)
 
         # Feature schema contract — logged by its canonical name so inference-api
         # can reliably download it by artifact path "feature_schema.json".
