@@ -70,3 +70,4 @@ Reads versioned Parquet snapshots from the offline feature store, trains a Light
 - Never train on live Redis data — training must use versioned Parquet snapshots only
 - Never derive genre list from the validation split — genres must come from training data only to prevent leakage
 - Never add features to training that are not present in the Redis feature hash — training/serving skew
+- Never call `set_registered_model_alias` without first asserting AUC and Precision@K exceed minimum thresholds — alias promotion is the only gate before the inference API hot-swaps (see ADR 0009)

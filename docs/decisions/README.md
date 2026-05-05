@@ -14,3 +14,4 @@
 | 0006 | [Audit Log Range Partitioning with Monthly TTL](privacy/0006-audit-log-range-partitioning.md) | privacy | 2026-04-29 | Accepted |
 | 0007 | [Fail Closed When Privacy Service Is Unreachable](inference-api/0007-fail-closed-on-privacy-unavailable.md) | inference-api | 2026-04-30 | Accepted |
 | 0008 | [Model-Agnostic Trainer Abstraction](model-training/0008-model-agnostic-trainer-abstraction.md) | model-training | 2026-05-04 | Accepted |
+| 0009 | [Alias-Only Model Promotion Gate (No Automated Quality Threshold)](model-training/0009-alias-only-model-promotion-gate.md) | model-training | 2026-05-04 | Accepted — with known gap |
