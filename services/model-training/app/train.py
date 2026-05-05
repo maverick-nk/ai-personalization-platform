@@ -58,8 +58,8 @@ def _get_or_create_experiment(client: mlflow.tracking.MlflowClient, name: str) -
     if experiment is not None and experiment.lifecycle_stage == LifecycleStage.ACTIVE:
         return experiment.experiment_id
     if experiment is not None and experiment.lifecycle_stage == LifecycleStage.DELETED:
-        # Restore the deleted experiment so we can reuse it; its artifact_location
-        # is already set correctly in the DB from when it was first created.
+        # Restore rather than recreate — the artifact_location in Postgres is preserved,
+        # so runs written before deletion remain accessible after restore.
         client.restore_experiment(experiment.experiment_id)
         log.info("Restored deleted experiment '%s' (id=%s)", name, experiment.experiment_id)
         return experiment.experiment_id
@@ -132,7 +132,6 @@ def train_and_register(settings: Settings) -> str:
 
         run_id = run.info.run_id
 
-    # Register and alias the model version
     model_uri = f"runs:/{run_id}/model"
     mv = mlflow.register_model(model_uri=model_uri, name=settings.mlflow_model_name)
     client = mlflow.tracking.MlflowClient()

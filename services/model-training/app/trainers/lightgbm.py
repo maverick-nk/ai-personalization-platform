@@ -7,10 +7,13 @@ import mlflow.lightgbm
 import numpy as np
 import pandas as pd
 from lightgbm import LGBMClassifier
-
-_EARLY_STOPPING_ROUNDS = 20
+from mlflow.models.signature import infer_signature
 
 from app.trainer import BaseTrainer
+
+# 20 rounds without val improvement reliably separates real plateau from noise on
+# typical engagement datasets without premature stopping on learning-rate warm-up.
+_EARLY_STOPPING_ROUNDS = 20
 
 log = logging.getLogger(__name__)
 
@@ -46,7 +49,6 @@ class LightGBMTrainer(BaseTrainer):
 
     def log_to_mlflow(self, artifact_path: str, X_example: pd.DataFrame | None = None) -> None:
         assert self._model is not None, "call fit() before log_to_mlflow()"
-        from mlflow.models.signature import infer_signature
         signature = infer_signature(X_example, self._model.predict_proba(X_example)[:, 1]) if X_example is not None else None
         mlflow.lightgbm.log_model(
             self._model.booster_,

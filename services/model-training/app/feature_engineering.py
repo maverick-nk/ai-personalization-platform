@@ -7,14 +7,8 @@ import pandas as pd
 
 log = logging.getLogger(__name__)
 
-# Base feature columns that map 1-to-1 from Parquet → training matrix.
-# Order is intentional: schema contract preserves this ordering.
-# avg_watch_duration is intentionally included as a feature even though it is also
-# the source of the engaged label. On synthetic data this produces AUC ≈ 1.0 because
-# the model can trivially reconstruct the label. On real data it remains a valid
-# feature (completion rate is a genuine engagement signal at inference time since
-# it is read from Redis, not derived from the label). Remove it here if label leakage
-# becomes a concern during model evaluation on production data.
+# Order is intentional — schema contract preserves this ordering for training/serving consistency.
+# avg_watch_duration doubles as label source; on synthetic data AUC ≈ 1.0 is expected.
 BASE_FEATURE_COLS = [
     "watch_count_10min",
     "category_affinity_score",
@@ -52,7 +46,6 @@ def build_feature_matrix(
     """
     df = df.copy()
 
-    # Expand session_genre_vector JSON → genre_{name} float columns
     genre_rows: list[dict] = []
     for raw in df["session_genre_vector"]:
         try:
@@ -95,8 +88,6 @@ def _build_schema_contract(
                 "dtype": "categorical",
                 "categories": TIME_OF_DAY_CATEGORIES,
             })
-        elif col.startswith("genre_"):
-            features.append({"name": col, "dtype": "float64"})
         else:
             features.append({"name": col, "dtype": "float64"})
 
