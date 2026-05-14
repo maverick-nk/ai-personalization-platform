@@ -15,3 +15,6 @@
 | 0007 | [Fail Closed When Privacy Service Is Unreachable](inference-api/0007-fail-closed-on-privacy-unavailable.md) | inference-api | 2026-04-30 | Accepted |
 | 0008 | [Model-Agnostic Trainer Abstraction](model-training/0008-model-agnostic-trainer-abstraction.md) | model-training | 2026-05-04 | Accepted |
 | 0009 | [Alias-Only Model Promotion Gate (No Automated Quality Threshold)](model-training/0009-alias-only-model-promotion-gate.md) | model-training | 2026-05-04 | Accepted — with known gap |
+| 0010 | [Python + FastAPI REST over Go + gRPC for Inference API](inference-api/0010-python-fastapi-over-go-grpc.md) | inference-api | 2026-05-13 | Accepted |
+| 0011 | [No Parquet Fallback on Redis Miss — Trending Feed as Cold-Start Response](inference-api/0011-no-parquet-fallback-on-redis-miss.md) | inference-api | 2026-05-13 | Accepted |
+| 0012 | [In-Process asyncio.Lock Model Hot-Swap](inference-api/0012-in-process-asyncio-lock-model-hotswap.md) | inference-api | 2026-05-14 | Accepted — with known gap |

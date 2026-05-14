@@ -159,18 +159,28 @@ Privacy Service ──────────► Inference API
 
 **Branch:** `feat/inference-api`
 
-**Stack:** Go + gRPC
+**Stack:** Python + FastAPI (REST)
+
+> **Deviation from original design:** The original plan specified Go + gRPC. Switched to
+> Python + FastAPI REST for two reasons: (1) LightGBM has no first-class Go binding —
+> loading a native artifact requires CGO or an ONNX export step, both of which add
+> significant build complexity for no latency benefit at this scale; (2) a REST gateway
+> over gRPC would have been required anyway for the pytest test harness, making the
+> gRPC layer pure overhead. The <50ms latency target is still achievable in Python with
+> async I/O and a tight privacy-service timeout.
 
 | Task | Detail |
 |---|---|
-| `GetRecommendations(user_id, top_n)` RPC | Core inference endpoint |
-| Privacy middleware | gRPC interceptor → consent check → block if revoked |
-| Redis feature fetch | `user:{id}:features` hash; target <5ms |
-| Model loading | Load LightGBM model from MLflow artifact path |
-| Model hot-swap | Background goroutine polls MLflow every N seconds; atomic model swap |
-| Scoring | Score each candidate content item; rank by click probability |
-| Cold-start fallback | Return trending feed (hardcoded or from config) if Redis miss |
-| HTTP gateway | Optional REST wrapper over gRPC for test harness compatibility |
+| `GET /recommend/{user_id}?top_n=N` | Core inference endpoint |
+| Pseudonymization | HMAC-SHA256 of `user_id` internally; raw ID never leaves the service |
+| Privacy check | `httpx` call to `GET /internal/consent/check/{pseudo_id}`; 3ms timeout; fail-closed (ADR 0007) |
+| Redis feature fetch | `HGETALL user:{pseudo_id}:features`; typed cast back from strings |
+| Scorer factory | `model_type` read from MLflow run params → `get_scorer(model_type, uri)` → `BaseScorer`; adding a new algorithm requires no changes outside `scorers/` |
+| Model hot-swap | Background `asyncio` task polls MLflow every N seconds; swaps under `asyncio.Lock` |
+| Scoring | `item_score = engagement_score × genre_affinity[item.genre]`; model is user-level, genre affinity ranks items |
+| Cold-start fallback | Trending feed from config on Redis miss, consent denial, or model not loaded |
+| Content catalog | 20 items across 8 genres, configurable via env |
+| OpenAPI spec | Auto-generated from FastAPI; saved to `docs/api/inference-api.openapi.json` |
 
 **Done when:** Inference returns ranked Top-N; cold start returns fallback; consent revocation blocks personalization; model hot-swap works without dropped requests.
 

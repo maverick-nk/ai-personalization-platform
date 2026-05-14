@@ -1,0 +1,192 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Inference API",
+    "description": "\nReal-time personalized content recommendations.\n\n## Request flow\n\nEvery request goes through four gates in order:\n\n1. **Consent check** \u2014 calls the privacy service. Fail-closed: any error or timeout is\n   treated as denied (ADR 0007). A user who has revoked consent receives the trending\n   fallback on the very next request.\n2. **Feature fetch** \u2014 reads `user:{pseudo_id}:features` from Redis. A cache miss means\n   the user has no watch history yet (cold start) and receives the trending fallback.\n3. **Model load** \u2014 retrieves the current LightGBM model. Returns the trending fallback\n   if the model has not finished its initial load.\n4. **Score and rank** \u2014 scores each catalog item as\n   `engagement_probability \u00d7 genre_affinity` and returns the top N.\n\n## Pseudonymization\n\nThe caller supplies a raw `user_id`. The service derives a pseudonymized ID internally\nusing HMAC-SHA256 before any Redis lookup or privacy call \u2014 the raw identifier never\nleaves this service.\n\n## Model hot-swap\n\nA background task polls MLflow every `INFERENCE_MODEL_POLL_INTERVAL_SECONDS` seconds.\nWhen a new version is found under the configured alias, it is loaded and swapped\natomically without dropping any in-flight requests.\n\n## Fallback\n\nAny non-personalized path (consent denied, cold start, model unavailable) returns the\nsame trending feed. The `personalized` flag and `fallback_reason` field distinguish\nthese cases from a personalized response.\n",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/recommend/{user_id}": {
+      "get": {
+        "tags": [
+          "recommendations"
+        ],
+        "summary": "Get personalized recommendations",
+        "description": "Return Top-N personalized recommendations for a user.\n\nFalls back to a non-personalized trending list when:\n- The user has not granted (or has revoked) consent\n- The privacy service is unreachable (fail-closed, ADR 0007)\n- The user has no feature data in Redis (cold start)\n- The model is not yet loaded",
+        "operationId": "recommend_recommend__user_id__get",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Raw user identifier. Pseudonymized internally before any lookup.",
+              "title": "User Id"
+            },
+            "description": "Raw user identifier. Pseudonymized internally before any lookup."
+          },
+          {
+            "name": "top_n",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Number of items to return.",
+              "default": 10,
+              "title": "Top N"
+            },
+            "description": "Number of items to return."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ranked content list. Check `personalized` to distinguish scored results from trending fallback.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid path or query parameter."
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "ops"
+        ],
+        "summary": "Health check",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Service is running. `model_version` is null if the model has not loaded yet.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Health Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "RecommendationResponse": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id",
+            "description": "The raw user ID as supplied by the caller."
+          },
+          "recommendations": {
+            "items": {
+              "$ref": "#/components/schemas/RecommendedItem"
+            },
+            "type": "array",
+            "title": "Recommendations",
+            "description": "Ranked list of content items, highest score first."
+          },
+          "personalized": {
+            "type": "boolean",
+            "title": "Personalized",
+            "description": "True when the list was scored for this specific user. False when a non-personalized trending fallback was returned."
+          },
+          "fallback_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback Reason",
+            "description": "Present only when personalized=false. One of: 'consent_denied' \u2014 user has not granted or has revoked consent; 'cold_start' \u2014 no feature data found in Redis; 'model_unavailable' \u2014 model has not finished loading."
+          },
+          "model_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Version",
+            "description": "MLflow model version used for scoring. Absent when personalized=false (model was not invoked)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "recommendations",
+          "personalized"
+        ],
+        "title": "RecommendationResponse"
+      },
+      "RecommendedItem": {
+        "properties": {
+          "content_id": {
+            "type": "string",
+            "title": "Content Id",
+            "description": "Unique content identifier from the catalog."
+          },
+          "genre": {
+            "type": "string",
+            "title": "Genre",
+            "description": "Genre of the content item."
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "Display title of the content item."
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score",
+            "description": "Click-probability score produced by the model (0.0\u20131.0). Absent for trending fallback items, which are not scored."
+          }
+        },
+        "type": "object",
+        "required": [
+          "content_id",
+          "genre",
+          "title"
+        ],
+        "title": "RecommendedItem"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "recommendations",
+      "description": "Personalized content ranking."
+    },
+    {
+      "name": "ops",
+      "description": "Health and readiness."
+    }
+  ]
+}

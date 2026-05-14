@@ -1,0 +1,27 @@
+[project]
+name = "inference-api"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic-settings",
+    "redis",
+    "httpx",
+    "lightgbm",
+    "numpy",
+    "pandas",
+    "mlflow",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "httpx",
+    "pytest-mock",
+    "respx>=0.23.1",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
