@@ -1,7 +1,7 @@
 # Implementation Plan
 
-> Status: In progress — architecture fully designed, implementation not started.
-> Last updated: 2026-04-11
+> Status: In progress — architecture fully designed, implementation in progress.
+> Last updated: 2026-05-14
 
 ---
 
