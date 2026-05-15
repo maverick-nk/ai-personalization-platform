@@ -121,6 +121,54 @@ services:
       retries: 5
       start_period: 10s
 
+  # ── Event Ingestion API ────────────────────────────────────────────────────
+  event-ingestion:
+    build: ./services/event-ingestion
+    container_name: event-ingestion
+    ports:
+      - "8000:8000"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      PSEUDONYMIZE_SECRET: ${PSEUDONYMIZE_SECRET}
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - platform
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── Inference API ──────────────────────────────────────────────────────────
+  inference-api:
+    build: ./services/inference-api
+    container_name: inference-api
+    ports:
+      - "8002:8002"
+    environment:
+      INFERENCE_PSEUDONYM_SECRET: ${PSEUDONYMIZE_SECRET}
+      INFERENCE_REDIS_HOST: redis
+      INFERENCE_PRIVACY_BASE_URL: http://privacy:8001
+      INFERENCE_MLFLOW_TRACKING_URI: http://mlflow:5000
+    depends_on:
+      redis:
+        condition: service_healthy
+      privacy:
+        condition: service_healthy
+      mlflow:
+        condition: service_healthy
+    networks:
+      - platform
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
 volumes:
   postgres_data:
   mlflow_artifacts:

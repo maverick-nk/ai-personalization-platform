@@ -53,8 +53,11 @@ class ModelStore:
         self._poll_task: asyncio.Task | None = None
 
     async def start(self) -> None:
-        self._current = await asyncio.to_thread(self._load)
-        log.info("Model loaded: %s v%s", self._model_name, self._current.version)
+        try:
+            self._current = await asyncio.to_thread(self._load)
+            log.info("Model loaded: %s v%s", self._model_name, self._current.version)
+        except Exception:
+            log.warning("No model available at startup — will retry on poll interval")
         self._poll_task = asyncio.create_task(self._poll_loop(), name="model-hotswap")
 
     async def stop(self) -> None:
