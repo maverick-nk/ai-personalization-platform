@@ -121,6 +121,36 @@ services:
       retries: 5
       start_period: 10s
 
+  # ── Feature Pipeline (PyFlink local embedded mode) ─────────────────────────
+  feature-pipeline:
+    build: ./services/feature-pipeline
+    container_name: feature-pipeline
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      PARQUET_BASE_PATH: /data/parquet
+      PSEUDONYMIZE_SECRET: ${PSEUDONYMIZE_SECRET}
+    volumes:
+      - parquet_store:/data/parquet
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - platform
+    restart: on-failure
+    healthcheck:
+      # pgrep matches the 'uv run feature-pipeline' process that starts the JVM.
+      # start_period is generous: JVM startup + Flink bootstrap + Kafka group join
+      # takes 30-60s; we allow 90s before the first check counts as a failure.
+      test: ["CMD", "pgrep", "-f", "app.pipeline"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 90s
+
   # ── Event Ingestion API ────────────────────────────────────────────────────
   event-ingestion:
     build: ./services/event-ingestion

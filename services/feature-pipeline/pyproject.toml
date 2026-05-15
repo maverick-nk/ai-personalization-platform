@@ -13,7 +13,10 @@ dependencies = [
 # requires Java 11/17/21. Unit tests (test_features.py) run without it.
 # Install with: uv sync --extra pipeline
 [project.optional-dependencies]
-pipeline = ["apache-flink==1.20.3"]
+# setuptools<70 is required at runtime: apache-beam (a transitive PyFlink dep)
+# imports pkg_resources at startup, which only ships as a top-level site-packages
+# module in setuptools < 70 — newer versions moved it inside the package.
+pipeline = ["apache-flink==1.20.3", "setuptools<70"]
 
 [dependency-groups]
 dev = [

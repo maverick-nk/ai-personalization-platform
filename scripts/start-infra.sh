@@ -29,8 +29,8 @@ echo "→ Starting infrastructure..."
 docker compose -f "$COMPOSE_FILE" up -d
 
 # ── Health polling ─────────────────────────────────────────────────────────
-SERVICES=(kafka redis postgres mlflow privacy event-ingestion inference-api)
-TIMEOUT=120
+SERVICES=(kafka redis postgres mlflow privacy event-ingestion inference-api feature-pipeline)
+TIMEOUT=180
 INTERVAL=5
 
 echo "→ Waiting for services to be healthy (timeout: ${TIMEOUT}s)..."
@@ -101,4 +101,5 @@ echo "  MLflow           http://mlflow:5000      / http://localhost:5001 (host)"
 echo "  Privacy          http://localhost:8001"
 echo "  Event Ingestion  http://localhost:8000"
 echo "  Inference API    http://localhost:8002"
+echo "  Feature Pipeline (Flink) — no HTTP port; writes to Redis + /data/parquet"
 echo "  Parquet          /data/parquet (Docker volume: parquet_store)"
