@@ -4,7 +4,7 @@ path: /services/privacy/
 status: active
 depends_on: [postgres*]
 depended_on_by: [inference-api, tests]
-last_updated: 2026-04-30
+last_updated: 2026-05-15
 ---
 
 # Service: privacy
@@ -19,6 +19,7 @@ Enforces consent-aware access control for personalization. Maintains a consent t
 - Version: 0.1.0
 - API contract: REST (FastAPI + uvicorn, port 8001)
 - Stack: Python 3.11, FastAPI, SQLAlchemy async + asyncpg, Alembic, pydantic-settings
+- Deployment: Docker container via docker-compose; startup managed by `entrypoint.sh`
 - Key behaviors:
   - Consent upsert + audit log entry written atomically in one transaction
   - Internal consent check is a primary-key lookup (no joins) — must stay under 5ms
@@ -38,8 +39,24 @@ Enforces consent-aware access control for personalization. Maintains a consent t
 
 ---
 
+## Docker
+
+Container startup is handled by `entrypoint.sh`:
+```sh
+uv run alembic upgrade head
+exec uv run uvicorn app.main:app --host 0.0.0.0 --port 8001
+```
+`exec` replaces the shell with uvicorn, making uvicorn PID 1 so Docker SIGTERM is delivered directly (clean shutdown, no orphan processes).
+
+Alembic runs migrations before uvicorn starts on every container boot — idempotent and safe; skips if schema is already current.
+
+`.dockerignore` excludes `tests/`, `.venv/`, `__pycache__/`, `*.pyc`, `.env` to keep the image layer clean.
+
+---
+
 ## Recent Changes
 
+- [2026-05-15] Dockerized service — added `entrypoint.sh` (Alembic migrations + `exec uvicorn` for PID 1), refactored Dockerfile from CMD shell string to `ENTRYPOINT ["./entrypoint.sh"]`, added `.dockerignore`
 - [2026-04-30] Implemented privacy service v0.1.0: FastAPI + SQLAlchemy async + asyncpg + Alembic; consent table (upsert) and audit_log (append-only, monthly RANGE partitioning, 3-month TTL via startup partition manager); 3 endpoints wired; HMAC-SHA256 pseudonymization; OpenAPI spec enriched with Field descriptions and exported; 10 unit tests + 10 integration tests (skip without infra)
 
 ---

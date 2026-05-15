@@ -4,7 +4,7 @@ path: /services/feature-pipeline/
 status: active
 depends_on: [kafka*, redis*, parquet*]
 depended_on_by: [inference-api, model-training]
-last_updated: 2026-04-23
+last_updated: 2026-05-15
 ---
 
 # Service: feature-pipeline
@@ -16,9 +16,10 @@ Consumes Kafka `user.watch.events` topic and computes 6 windowed features per us
 
 ## Current State
 
-- Version: 0.1.0 — implemented (Step 2 complete)
+- Version: 0.1.1 — Dockerized (Step 2 + Docker deployment complete)
 - Stack: PyFlink 1.20.3 (local embedded mode, no separate Flink cluster)
-- Entry point: `uv run feature-pipeline` (requires Java 11/17/21 and `JAVA_HOME` set)
+- Deployment: Docker container via docker-compose (`feature-pipeline` service)
+- Entry point: `/app/.venv/bin/python -m app.pipeline` (inside container)
 - Unit tests: `uv run pytest tests/test_features.py` — 25 passing (no infra needed)
 - Integration tests: `tests/test_integration.py` — requires Kafka + Redis + Java
 
@@ -38,10 +39,37 @@ Feature computation uses a single `KeyedProcessFunction` per `pseudo_user_id` wi
 
 PyFlink is an optional extra in pyproject.toml (`pipeline` extra) because it requires a JVM. Unit tests (test_features.py) run without it.
 
+`setuptools<70` is pinned in the `pipeline` extra: `apache-beam` (transitive PyFlink dep) imports `pkg_resources` at startup, which only ships as a top-level site-packages module in setuptools < 70 — newer versions moved it inside the package.
+
+---
+
+## Docker
+
+Base image: `python:3.11-slim` (Debian Bookworm/Trixie).
+
+Apt dependencies installed at build time:
+- `default-jdk-headless` — distro-agnostic JDK meta-package (Java 17 on Bookworm, Java 21 on Trixie); both supported by Flink 1.20.3
+- `gcc` + `libc6-dev` — required to build `pemja`'s C extension (PyFlink's Python-Java bridge)
+- `procps` — provides `pgrep` for the docker-compose healthcheck
+
+Environment variables:
+- `JAVA_HOME=/usr/lib/jvm/default-java` — distro-agnostic JDK symlink
+- `PATH="/app/.venv/bin:${PATH}"` — prepends the venv so bare `python` (used by the Flink JVM via `os.execvp("python", ...)` when discovering worker processes) resolves to the venv Python where PyFlink is installed
+- `PYFLINK_PYTHON=/app/.venv/bin/python` — belt-and-suspenders for explicit UDF worker spawning
+
+Build uses two-phase uv sync to maximize layer caching:
+1. `uv sync --extra pipeline --frozen --no-dev --no-install-project` — slow C-compile layer (pemja + apache-flink-libraries); only invalidated when `pyproject.toml`/`uv.lock` changes
+2. `uv sync --extra pipeline --frozen --no-dev` — fast project install (script creation only); invalidated on `app/` code changes
+
+CMD: `/app/.venv/bin/python -m app.pipeline` — runs venv Python directly; avoids `uv run` which would re-sync the environment at container start and silently drop PyFlink if `--extra pipeline` is omitted.
+
+docker-compose healthcheck: `pgrep -f app.pipeline` with `start_period: 90s` (accounts for JVM startup + Flink bootstrap + Kafka consumer group join).
+
 ---
 
 ## Recent Changes
 
+- 2026-05-15: Dockerized service — added Dockerfile (`python:3.11-slim` + JDK + pemja build deps), docker-compose entry, `.dockerignore`; added `setuptools<70` to `pipeline` extra (pkg_resources fix); pinned healthcheck to `pgrep -f app.pipeline`; switched CMD to `/app/.venv/bin/python -m app.pipeline` with PATH/PYFLINK_PYTHON env vars for Flink worker discovery
 - 2026-04-23: Hardened pipeline — switched state serialization from PICKLED_BYTE_ARRAY to RowTypeInfo, moved Redis string encoding into RedisSink, fixed ParquetSink lock pattern (drain-then-write), added Flink checkpointing (60s), fixed session_genre_counts to rebuild from eviction window; 29 unit + 3 integration tests passing
 - 2026-04-19: Initial implementation (Step 2)
   - Added `genre: str | None` to WatchEvent in event-ingestion (backward-compatible)
