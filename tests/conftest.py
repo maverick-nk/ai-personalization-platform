@@ -67,25 +67,39 @@ def redis_client(redis_host, redis_port) -> redis.Redis:
     client.close()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 async def event_client(event_ingestion_url) -> EventIngestionClient:
     client = EventIngestionClient(base_url=event_ingestion_url)
     yield client
     await client.aclose()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 async def inference_client(inference_url) -> InferenceClient:
     client = InferenceClient(base_url=inference_url)
     yield client
     await client.aclose()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 async def privacy_client(privacy_url) -> PrivacyClient:
     client = PrivacyClient(base_url=privacy_url)
     yield client
     await client.aclose()
+
+
+# ---------------------------------------------------------------------------
+# Optional service availability gates
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="session")
+def feature_pipeline_available() -> bool:
+    """True when the Flink feature pipeline is running.
+
+    Set FEATURE_PIPELINE_ENABLED=true before running to enable
+    feature_freshness and event_propagation scenario tests.
+    """
+    return os.getenv("FEATURE_PIPELINE_ENABLED", "").lower() == "true"
 
 
 # ---------------------------------------------------------------------------

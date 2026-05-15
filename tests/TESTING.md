@@ -13,17 +13,20 @@ End-to-end tests for the personalization platform. All tests run against **real 
 
 ---
 
-## 1. Start Infrastructure (Docker Services)
+## 1. Start Infrastructure
 
 From the repository root:
 
 ```bash
+export PSEUDONYMIZE_SECRET=<your-secret>
 ./scripts/start-infra.sh
 ```
 
-This starts: **Kafka**, **Redis**, **Postgres**, **MLflow**, and the **Privacy service** via docker-compose. The script polls until all services report healthy.
+This starts **all 7 services** via docker-compose: Kafka, Redis, Postgres, MLflow, Privacy, Event Ingestion, and Inference API. The script polls until every service reports healthy, then creates the required Kafka topics.
 
-To stop:
+> The `<your-secret>` value is the shared HMAC key that makes pseudonymized IDs consistent across all services. It must be the **same string** when you set `PSEUDONYMIZE_SECRET` for the tests.
+
+To stop all services:
 
 ```bash
 docker compose down
@@ -31,30 +34,7 @@ docker compose down
 
 ---
 
-## 2. Start Local Services
-
-These services are not in docker-compose and must be started manually. Open two terminal tabs.
-
-**event-ingestion** (port 8000):
-
-```bash
-cd services/event-ingestion
-PSEUDONYMIZE_SECRET=<your-secret> uv run uvicorn app.main:app --port 8000
-```
-
-**inference-api** (port 8002):
-
-```bash
-cd services/inference-api
-INFERENCE_PSEUDONYM_SECRET=<your-secret> uv run uvicorn app.main:app --port 8002
-```
-
-> Port 8002 is used because 8000 (event-ingestion) and 8001 (privacy, docker-compose) are taken.
-> The `<your-secret>` value must be the **same string** across all three services — it is the shared HMAC key that makes pseudonymized IDs consistent across Redis, privacy, and the inference-api.
-
----
-
-## 3. Environment Variables
+## 2. Environment Variables
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
@@ -64,10 +44,11 @@ INFERENCE_PSEUDONYM_SECRET=<your-secret> uv run uvicorn app.main:app --port 8002
 | `PRIVACY_URL` | No | `http://localhost:8001` | privacy service base URL |
 | `REDIS_HOST` | No | `localhost` | Redis hostname |
 | `REDIS_PORT` | No | `6379` | Redis port |
+| `FEATURE_PIPELINE_ENABLED` | No | — | Set to `true` to run feature-freshness and event-propagation tests (requires the Flink pipeline to be running separately) |
 
 ---
 
-## 4. Install Test Dependencies
+## 3. Install Test Dependencies
 
 ```bash
 cd tests
@@ -76,7 +57,7 @@ uv sync
 
 ---
 
-## 5. Run Commands
+## 4. Run Commands
 
 ```bash
 # All e2e tests
@@ -97,9 +78,9 @@ PSEUDONYMIZE_SECRET=<secret> uv run pytest scenarios/test_consent_revocation.py 
 
 ---
 
-## 6. Interpreting Results
+## 5. Interpreting Results
 
-**`SKIPPED`** — `PSEUDONYMIZE_SECRET` is not set, or a per-scenario skip condition was not met (e.g. the feature-pipeline is not running). Check that all services in Steps 1–2 are healthy.
+**`SKIPPED`** — `PSEUDONYMIZE_SECRET` is not set, or a per-scenario skip condition was not met (e.g. the feature-pipeline is not running). Check that all services from Step 1 are healthy (`docker compose ps`).
 
 **Latency assertion failure** — The failure message shows the actual p95 and the SLO:
 ```
@@ -116,7 +97,7 @@ This means at least 5% of requests took longer than the target. Check service lo
 
 ---
 
-## 7. Test Isolation
+## 6. Test Isolation
 
 Tests generate UUID-based user IDs (`e2e-<12 hex chars>`). No cleanup is needed after a test run:
 
@@ -125,7 +106,7 @@ Tests generate UUID-based user IDs (`e2e-<12 hex chars>`). No cleanup is needed 
 
 ---
 
-## 8. Scenario Coverage
+## 7. Scenario Coverage
 
 | Scenario | Marker | Services Required | Notes |
 |---|---|---|---|
