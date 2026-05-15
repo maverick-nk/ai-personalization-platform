@@ -11,6 +11,13 @@ for arg in "$@"; do
   [[ "$arg" == "--reset" ]] && RESET=true
 done
 
+# ── Secret guard ───────────────────────────────────────────────────────────
+if [ -z "${PSEUDONYMIZE_SECRET:-}" ]; then
+  echo "Error: PSEUDONYMIZE_SECRET must be exported before running start-infra.sh"
+  echo "  export PSEUDONYMIZE_SECRET=<your-secret>"
+  exit 1
+fi
+
 # ── Optional reset ─────────────────────────────────────────────────────────
 if $RESET; then
   echo "→ Resetting infra volumes..."
@@ -22,7 +29,7 @@ echo "→ Starting infrastructure..."
 docker compose -f "$COMPOSE_FILE" up -d
 
 # ── Health polling ─────────────────────────────────────────────────────────
-SERVICES=(kafka redis postgres mlflow)
+SERVICES=(kafka redis postgres mlflow privacy event-ingestion inference-api)
 TIMEOUT=120
 INTERVAL=5
 
@@ -87,8 +94,11 @@ done
 
 echo ""
 echo "Endpoints:"
-echo "  Kafka     kafka:9092  (internal) / localhost:29092 (host, EXTERNAL listener)"
-echo "  Redis     redis:6379  (internal) / localhost:6379 (host)"
-echo "  Postgres  postgres:5432           / localhost:5432 (host)"
-echo "  MLflow    http://mlflow:5000      / http://localhost:5001 (host)"
-echo "  Parquet   /data/parquet (Docker volume: parquet_store)"
+echo "  Kafka            kafka:9092  (internal) / localhost:29092 (host, EXTERNAL listener)"
+echo "  Redis            redis:6379  (internal) / localhost:6379 (host)"
+echo "  Postgres         postgres:5432           / localhost:5432 (host)"
+echo "  MLflow           http://mlflow:5000      / http://localhost:5001 (host)"
+echo "  Privacy          http://localhost:8001"
+echo "  Event Ingestion  http://localhost:8000"
+echo "  Inference API    http://localhost:8002"
+echo "  Parquet          /data/parquet (Docker volume: parquet_store)"
