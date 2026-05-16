@@ -22,9 +22,9 @@ export PSEUDONYMIZE_SECRET=<your-secret>
 ./scripts/start-infra.sh
 ```
 
-This starts **all 7 services** via docker-compose: Kafka, Redis, Postgres, MLflow, Privacy, Event Ingestion, and Inference API. The script polls until every service reports healthy, then creates the required Kafka topics.
+This starts **all 8 services** via docker-compose: Kafka, Redis, Postgres, MLflow, Privacy, Event Ingestion, Inference API, and the Feature Pipeline (Flink). The script polls until every service reports healthy, then creates the required Kafka topics.
 
-> The `<your-secret>` value is the shared HMAC key that makes pseudonymized IDs consistent across all services. It must be the **same string** when you set `PSEUDONYMIZE_SECRET` for the tests.
+> **Critical:** The `<your-secret>` value is the shared HMAC key that makes pseudonymized IDs consistent across all services. It must be the **exact same string** both when you start the containers and when you run the tests — a mismatch causes the inference-api and the test runner to compute different pseudonyms for the same user, producing `consent_denied` instead of `cold_start` and breaking event-propagation assertions.
 
 To stop all services:
 
@@ -44,7 +44,9 @@ docker compose down
 | `PRIVACY_URL` | No | `http://localhost:8001` | privacy service base URL |
 | `REDIS_HOST` | No | `localhost` | Redis hostname |
 | `REDIS_PORT` | No | `6379` | Redis port |
-| `FEATURE_PIPELINE_ENABLED` | No | — | Set to `true` to run feature-freshness and event-propagation tests (requires the Flink pipeline to be running separately) |
+| `FEATURE_PIPELINE_ENABLED` | No | — | Set to `true` to run feature-freshness and event-propagation tests (feature-pipeline runs in docker-compose via `start-infra.sh`) |
+| `MLFLOW_URL` | No | `http://localhost:5001` | MLflow tracking server URL (used by the hot-swap test to register new versions) |
+| `INFERENCE_MLFLOW_MODEL_NAME` | No | `personalization-click-model` | MLflow registered model name (must match `INFERENCE_MLFLOW_MODEL_NAME` in docker-compose) |
 
 ---
 
@@ -60,20 +62,24 @@ uv sync
 ## 4. Run Commands
 
 ```bash
-# All e2e tests
+# All e2e tests (feature-pipeline gates skipped unless FEATURE_PIPELINE_ENABLED=true)
 PSEUDONYMIZE_SECRET=<secret> uv run pytest . -v
 
+# All tests including feature pipeline scenarios
+PSEUDONYMIZE_SECRET=<secret> FEATURE_PIPELINE_ENABLED=true uv run pytest . -v
+
 # By scenario category
-PSEUDONYMIZE_SECRET=<secret> uv run pytest . -m consent -v         # consent revocation + audit
-PSEUDONYMIZE_SECRET=<secret> uv run pytest . -m cold_start -v      # cold-start fallback
-PSEUDONYMIZE_SECRET=<secret> uv run pytest . -m latency -v         # p95 SLO assertions
+PSEUDONYMIZE_SECRET=<secret> uv run pytest . -m consent -v            # consent revocation + audit
+PSEUDONYMIZE_SECRET=<secret> uv run pytest . -m cold_start -v         # cold-start fallback
+PSEUDONYMIZE_SECRET=<secret> uv run pytest . -m latency -v            # p95 SLO assertions
 PSEUDONYMIZE_SECRET=<secret> uv run pytest . -m feature_freshness -v  # Redis freshness
+PSEUDONYMIZE_SECRET=<secret> uv run pytest . -m model_hotswap -v      # model hot-swap
 
 # Fast feedback — skip anything with long wait loops
 PSEUDONYMIZE_SECRET=<secret> uv run pytest . -m "not slow" -v
 
 # Single scenario file
-PSEUDONYMIZE_SECRET=<secret> uv run pytest scenarios/test_consent_revocation.py -v
+PSEUDONYMIZE_SECRET=<secret> uv run pytest scenarios/test_consent.py -v
 ```
 
 ---
@@ -97,7 +103,38 @@ This means at least 5% of requests took longer than the target. Check service lo
 
 ---
 
-## 6. Test Isolation
+## 6. Running the Model Hot-swap Test
+
+The `model_hotswap` test requires a model registered in MLflow before it can run (it skips with a clear message if none is found). The model-training pipeline is not in docker-compose — run it manually once:
+
+```bash
+cd services/model-training
+
+# Generate synthetic Parquet training data (if real Flink data isn't available)
+uv run python scripts/seed_parquet.py
+
+# Train and register a model to MLflow
+MODEL_TRAINING_PARQUET_BASE_PATH=/tmp/parquet_sample \
+MODEL_TRAINING_MLFLOW_TRACKING_URI=http://localhost:5001 \
+uv run python -m app
+```
+
+The pipeline registers the model under the `staging` alias by default. The inference-api will load it within 30s (its poll interval). Confirm with:
+
+```bash
+curl http://localhost:8002/health
+# {"status":"ok","model_version":"1"}
+```
+
+Then run the hot-swap test:
+
+```bash
+PSEUDONYMIZE_SECRET=<secret> uv run pytest scenarios/test_model_hotswap.py -v
+```
+
+---
+
+## 8. Test Isolation
 
 Tests generate UUID-based user IDs (`e2e-<12 hex chars>`). No cleanup is needed after a test run:
 
@@ -106,14 +143,13 @@ Tests generate UUID-based user IDs (`e2e-<12 hex chars>`). No cleanup is needed 
 
 ---
 
-## 7. Scenario Coverage
+## 9. Scenario Coverage
 
 | Scenario | Marker | Services Required | Notes |
 |---|---|---|---|
 | Cold start | `cold_start` | inference-api, privacy | No feature data in Redis → trending fallback |
 | Consent revocation | `consent` | inference-api, privacy | Verifies audit log entry + fallback response |
-| Watch event propagation | `slow`, `e2e` | event-ingestion, feature-pipeline, inference-api | Waits ≤5s for Redis update |
-| Feature freshness | `feature_freshness`, `slow` | event-ingestion, feature-pipeline, Redis | Checks `computed_at_epoch` age |
-| Cold start → personalized shift | `cold_start`, `slow` | event-ingestion, feature-pipeline, inference-api | 3+ watches → personalized |
-| Latency SLO | `latency` | inference-api | p95 end-to-end <50ms |
-| Model hot-swap | `slow` | inference-api, MLflow | New alias → swap within poll interval |
+| Watch event propagation | `e2e`, `slow` | event-ingestion, feature-pipeline, Redis | Requires `FEATURE_PIPELINE_ENABLED=true`; waits ≤5s for Redis update |
+| Feature freshness | `feature_freshness`, `slow` | event-ingestion, feature-pipeline, Redis | Requires `FEATURE_PIPELINE_ENABLED=true`; checks `computed_at_epoch` age |
+| Latency SLO | `latency` | inference-api, privacy | p95 end-to-end <50ms for consent-denied and cold-start paths |
+| Model hot-swap | `model_hotswap`, `slow` | inference-api, MLflow | Requires a registered model in MLflow (run model-training pipeline first); registers a new version and waits ≤60s for the background poller to swap |
