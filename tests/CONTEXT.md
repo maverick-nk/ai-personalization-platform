@@ -16,7 +16,7 @@ End-to-end test harness that drives all system validation. No UI exists — all 
 
 ## Current State
 
-- Version: v0.1.0 — Step 6 complete (2026-05-14)
+- Version: v0.1.1 — Step 6 complete + model_hotswap scenario added (2026-05-16)
 - Stack: Python + pytest (async via pytest-asyncio)
 - Key behaviors:
   - UUID-based user isolation per test (`e2e-<hex>`) — no cleanup needed
@@ -46,6 +46,7 @@ tests/
     test_event_propagation.py
     test_feature_freshness.py
     test_latency.py
+    test_model_hotswap.py
   conftest.py       # Fixtures: clients, redis, unique_user_id
   TESTING.md        # Operator guide (how to run, env vars, markers)
 ```
@@ -59,6 +60,7 @@ tests/
 | `latency` | p95 SLO assertions |
 | `feature_freshness` | Redis key age < 5s (requires feature pipeline) |
 | `e2e` | Full streaming path (requires feature pipeline) |
+| `model_hotswap` | Model hot-swap under concurrent load (requires MLflow + trained model) |
 | `slow` | Tests with wait loops (≤10s); skippable for fast feedback |
 
 ### Service URLs (env-configurable)
