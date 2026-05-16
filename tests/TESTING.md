@@ -129,7 +129,7 @@ PSEUDONYMIZE_SECRET=<secret> uv run pytest scenarios/test_model_hotswap.py -v
 
 ---
 
-## 8. Test Isolation
+## 7. Test Isolation
 
 Tests generate UUID-based user IDs (`e2e-<12 hex chars>`). No cleanup is needed after a test run:
 
@@ -138,7 +138,7 @@ Tests generate UUID-based user IDs (`e2e-<12 hex chars>`). No cleanup is needed 
 
 ---
 
-## 9. Scenario Coverage
+## 8. Scenario Coverage
 
 | Scenario | Marker | Services Required | Notes |
 |---|---|---|---|
