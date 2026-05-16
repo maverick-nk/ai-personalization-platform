@@ -17,6 +17,7 @@
 # Environment:
 #   MLFLOW_URL            MLflow tracking server. Default: http://localhost:5001
 #   INFERENCE_URL         Inference API health endpoint. Default: http://localhost:8002
+#   MODEL_NAME            MLflow registered model name. Default: personalization-click-model
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -24,6 +25,8 @@ TRAINING_DIR="$REPO_ROOT/services/model-training"
 
 MLFLOW_URL="${MLFLOW_URL:-http://localhost:5001}"
 INFERENCE_URL="${INFERENCE_URL:-http://localhost:8002}"
+# Must match MODEL_TRAINING_MLFLOW_MODEL_NAME / INFERENCE_MLFLOW_MODEL_NAME in docker-compose
+MODEL_NAME="${MODEL_NAME:-personalization-click-model}"
 PARQUET_PATH="/tmp/parquet_sample"
 MODEL_ALIAS="staging"
 
@@ -65,22 +68,46 @@ echo "→ Running model training pipeline (alias: ${MODEL_ALIAS})..."
   uv run python -m app
 )
 
-# ── Wait for inference-api to hot-swap ────────────────────────────────────────
+# ── Resolve the version that was just registered ──────────────────────────────
+# Use the model-training venv's mlflow (guaranteed installed) to look up which
+# version now sits under the alias — avoids parsing training log output.
+NEW_VERSION=$(
+  cd "$TRAINING_DIR" && uv run python3 - <<PYEOF 2>/dev/null || true
+import mlflow
+mlflow.set_tracking_uri("${MLFLOW_URL}")
+try:
+    mv = mlflow.tracking.MlflowClient().get_model_version_by_alias("${MODEL_NAME}", "${MODEL_ALIAS}")
+    print(mv.version, end="")
+except Exception:
+    pass
+PYEOF
+)
+
+# ── Wait for inference-api to serve the new version ───────────────────────────
 # The inference-api polls MLflow every 30s. We give it 60s.
 if curl -sf "${INFERENCE_URL}/health" >/dev/null 2>&1; then
-  echo "→ Waiting for inference-api to load the new model (poll interval: 30s)..."
+  if [[ -n "$NEW_VERSION" ]]; then
+    echo "→ Waiting for inference-api to load model v${NEW_VERSION} (poll interval: 30s)..."
+  else
+    echo "→ Waiting for inference-api to load the model (poll interval: 30s)..."
+  fi
   TIMEOUT=60
   INTERVAL=5
   elapsed=0
   while true; do
-    version=$(curl -sf "${INFERENCE_URL}/health" 2>/dev/null \
+    current=$(curl -sf "${INFERENCE_URL}/health" 2>/dev/null \
       | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('model_version') or '')" 2>/dev/null || true)
-    if [[ -n "$version" ]]; then
-      echo "  ✓ inference-api serving model version ${version}"
+    # If we know the target version, wait for it specifically.
+    # Otherwise (MLflow query failed) accept any non-null version.
+    if [[ -n "$NEW_VERSION" && "$current" == "$NEW_VERSION" ]]; then
+      echo "  ✓ inference-api serving model version ${current}"
+      break
+    elif [[ -z "$NEW_VERSION" && -n "$current" ]]; then
+      echo "  ✓ inference-api serving model version ${current}"
       break
     fi
     if (( elapsed >= TIMEOUT )); then
-      echo "  ⚠ inference-api has not loaded a model after ${TIMEOUT}s."
+      echo "  ⚠ inference-api has not loaded model v${NEW_VERSION:-<new>} after ${TIMEOUT}s."
       echo "    It will retry on its next poll cycle (every 30s)."
       echo "    Check: curl ${INFERENCE_URL}/health"
       break

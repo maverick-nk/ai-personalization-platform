@@ -4,7 +4,7 @@ path: /tests/
 status: active
 depends_on: [event-ingestion, inference-api, privacy, feature-pipeline]
 depended_on_by: []
-last_updated: 2026-05-14
+last_updated: 2026-05-16
 ---
 
 # Service: tests
@@ -74,6 +74,7 @@ tests/
 ---
 
 ## Recent Changes
+- [2026-05-16] Added model_hotswap scenario test, mlflow dependency, TESTING.md updates for model hot-swap workflow
 
 - [2026-05-14] Step 6 complete — all scenario files implemented; CONTEXT.md updated from stale scaffold
 
