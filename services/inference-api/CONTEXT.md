@@ -4,7 +4,7 @@ path: /services/inference-api/
 status: active
 depends_on: [redis*, mlflow*, privacy]
 depended_on_by: [tests]
-last_updated: 2026-05-13
+last_updated: 2026-05-16
 ---
 
 # Service: inference-api
@@ -33,6 +33,7 @@ Serves real-time personalized recommendations. Checks consent via privacy servic
 ---
 
 ## Recent Changes
+- [2026-05-16] Added libgomp1 apt dep to Dockerfile — required by LightGBM C extension at runtime (python:3.11-slim strips it, causing OSError on model load)
 
 - [2026-05-13] Implemented inference-api in Python + FastAPI REST (pivoted from Go + gRPC per ADR 0010): consent check → Redis feature fetch → scorer factory → Top-N ranking; model hot-swap without blocking request path; fail-closed privacy; trending fallback for cold start, consent denied, and model unavailable
 
