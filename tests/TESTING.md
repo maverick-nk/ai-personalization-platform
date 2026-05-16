@@ -105,25 +105,20 @@ This means at least 5% of requests took longer than the target. Check service lo
 
 ## 6. Running the Model Hot-swap Test
 
-The `model_hotswap` test requires a model registered in MLflow before it can run (it skips with a clear message if none is found). The model-training pipeline is not in docker-compose — run it manually once:
+The `model_hotswap` test requires a model registered in MLflow before it can run (it skips with a clear message if none is found). The model-training pipeline is not in docker-compose — use the wrapper script:
 
 ```bash
-cd services/model-training
-
-# Generate synthetic Parquet training data (if real Flink data isn't available)
-uv run python scripts/seed_parquet.py
-
-# Train and register a model to MLflow
-MODEL_TRAINING_PARQUET_BASE_PATH=/tmp/parquet_sample \
-MODEL_TRAINING_MLFLOW_TRACKING_URI=http://localhost:5001 \
-uv run python -m app
+./scripts/train-model.sh
 ```
 
-The pipeline registers the model under the `staging` alias by default. The inference-api will load it within 30s (its poll interval). Confirm with:
+The script checks MLflow reachability, seeds synthetic Parquet data if the store is empty, trains the model, registers it under the `staging` alias, and waits for the inference-api to confirm it loaded. Options:
 
 ```bash
-curl http://localhost:8002/health
-# {"status":"ok","model_version":"1"}
+# Use real Flink-written Parquet data instead of seeded data
+./scripts/train-model.sh --parquet-path /path/to/parquet
+
+# Register under 'production' alias instead of 'staging'
+./scripts/train-model.sh --alias production
 ```
 
 Then run the hot-swap test:
