@@ -138,7 +138,7 @@ Tests generate UUID-based user IDs (`e2e-<12 hex chars>`). No cleanup is needed 
 
 ---
 
-## 9. User Simulation Tests (Locust)
+## 8. User Simulation Tests (Locust)
 
 The simulation framework (`tests/simulation/`) uses [Locust](https://locust.io) to drive realistic multi-user journeys (watch → recommend → consent) against the live stack. These tests are **not run in CI** — they require a running stack and are executed manually.
 
@@ -242,7 +242,7 @@ You can adjust user count and spawn rate from the UI without restarting the runn
 
 ---
 
-## 8. Scenario Coverage
+## 9. Scenario Coverage
 
 | Scenario | Marker | Services Required | Notes |
 |---|---|---|---|
