@@ -104,6 +104,7 @@ async def test_watch_event_reaches_kafka(client, kafka_consumer):
     # auto.offset.reset=earliest means old messages may appear first; the UUID-based
     # user_id guarantees the expected_pseudo is unique across runs.
     msg = None
+    raw_msg = None
     deadline = time.time() + 10
     while time.time() < deadline:
         m = kafka_consumer.poll(0.5)
@@ -115,6 +116,7 @@ async def test_watch_event_reaches_kafka(client, kafka_consumer):
             parsed = json.loads(m.value())
             if parsed.get("pseudo_user_id") == expected_pseudo:
                 msg = parsed
+                raw_msg = m
                 break
 
     assert msg is not None, "No message received on user.watch.events within timeout"
@@ -123,6 +125,7 @@ async def test_watch_event_reaches_kafka(client, kafka_consumer):
     assert msg["content_id"] == "mov-integration-1"
     assert msg["watch_pct"] == 42.5
     assert msg["genre"] == "action"
+    assert raw_msg.key() == expected_pseudo.encode(), "Kafka message key must equal the pseudo_user_id bytes"
 
 
 @pytest.mark.asyncio
@@ -146,6 +149,7 @@ async def test_session_event_reaches_kafka(client, kafka_consumer):
     assert response.status_code == 202
 
     msg = None
+    raw_msg = None
     deadline = time.time() + 10
     while time.time() < deadline:
         m = kafka_consumer.poll(0.5)
@@ -157,6 +161,7 @@ async def test_session_event_reaches_kafka(client, kafka_consumer):
             parsed = json.loads(m.value())
             if parsed.get("pseudo_user_id") == expected_pseudo:
                 msg = parsed
+                raw_msg = m
                 break
 
     assert msg is not None, "No message received on user.session.events within timeout"
@@ -164,6 +169,7 @@ async def test_session_event_reaches_kafka(client, kafka_consumer):
     assert msg["pseudo_user_id"] == expected_pseudo
     assert msg["session_id"] == "sess-001"
     assert msg["device"] == "smart-tv"
+    assert raw_msg.key() == expected_pseudo.encode(), "Kafka message key must equal the pseudo_user_id bytes"
 
 
 @pytest.mark.asyncio

@@ -104,7 +104,7 @@ def ingest_watch(request: Request, event: WatchEvent):
         "genre": event.genre,
         "timezone": event.timezone,
     }
-    request.app.state.producer.publish(TOPIC_WATCH, payload)
+    request.app.state.producer.publish(TOPIC_WATCH, payload, key=pseudo_id)
 
     # 202 Accepted: event is enqueued for delivery but not yet confirmed by the broker.
     # This matches the fire-and-forget contract — callers should not retry on 202.
@@ -137,5 +137,5 @@ def ingest_session(request: Request, event: SessionEvent):
         "device": event.device,
         "start_time": event.start_time,
     }
-    request.app.state.producer.publish(TOPIC_SESSION, payload)
+    request.app.state.producer.publish(TOPIC_SESSION, payload, key=pseudo_id)
     return JSONResponse(status_code=202, content={"accepted": True})
