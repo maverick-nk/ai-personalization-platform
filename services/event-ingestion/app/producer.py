@@ -19,12 +19,15 @@ class KafkaProducer:
     def __init__(self, bootstrap_servers: str) -> None:
         self._producer = Producer({"bootstrap.servers": bootstrap_servers})
 
-    def publish(self, topic: str, payload: dict) -> None:
+    def publish(self, topic: str, payload: dict, key: str | None = None) -> None:
         value = json.dumps(payload, default=_serialize).encode()
+        encoded_key = key.encode() if key else None
         # `produce` is non-blocking — it enqueues the message in librdkafka's internal
         # buffer. `poll(0)` services the delivery callback queue without blocking,
         # so delivery failures are surfaced promptly without stalling the request.
-        self._producer.produce(topic, value=value, callback=_delivery_callback)
+        # Keying by pseudo_user_id ensures all events for the same user land on the
+        # same partition, preserving per-user ordering and aligning with Flink's key_by.
+        self._producer.produce(topic, key=encoded_key, value=value, callback=_delivery_callback)
         self._producer.poll(0)
 
     def flush(self) -> None:
