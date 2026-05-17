@@ -9,8 +9,8 @@
 
 | Phase | Scope | Status |
 |---|---|---|
-| Phase 1 | Core system — all services, end-to-end data flow verified by test harness | ✅ Complete (Steps 0–6) |
-| Phase 2 | Production engineering — pipeline correctness, CI/CD, user simulation framework | 🔄 In progress |
+| Phase 1 | Core system — all services, end-to-end data flow, pipeline bug fixes | 🔄 In progress (Steps 0–6 ✅, Step 7 in progress) |
+| Phase 2 | Production engineering — CI/CD, user simulation framework | Pending Phase 1 |
 | Phase 3 | Cloud deployment (GCP) + Observability | Deferred |
 
 ---
@@ -212,66 +212,47 @@ User behavior profiles:
 
 ---
 
-### Step 7 — Observability Stack
+### Step 7 — Feature Pipeline Bug Fixes
 
-> **Deferred to Phase 3.** Observability is most useful when the system runs under real load in a production environment. Building dashboards against a local docker-compose stack produces no actionable signal. Step 7 will be implemented after GCP deployment is live and the simulation framework is generating traffic.
+**Branch:** `fix/feature-pipeline-correctness`
 
-**Stack:** Prometheus + Grafana
+Two correctness bugs in `services/feature-pipeline/` identified and fixed as part of Phase 1 completion. Both affect result correctness under production traffic patterns.
 
-| Metric | Instrument In | Purpose |
-|---|---|---|
-| `inference_latency_ms` (p50/p95/p99) | Inference API | Latency SLO |
-| `feature_age_seconds` | Feature pipeline / Redis | Freshness alert |
-| `kafka_consumer_lag` | Feature pipeline | Processing lag |
-| `prediction_score_distribution` | Inference API | Model drift |
-| `consent_revocations_total` | Privacy service | Audit signal |
-| `cold_start_fallback_rate` | Inference API | Cold start prevalence |
+**Bug A: Late-Event Window Expansion**
 
-Deliverables (Phase 3):
-- Prometheus scrape endpoints (`/metrics`) in each Python service
-- `docker-compose` and GKE manifests include Prometheus + Grafana
-- Grafana dashboard JSON checked into `infra/grafana/`
-- Alert rule for `feature_age_seconds > 5`
-- Separate cost dashboard: GCP Billing → BigQuery → Grafana BigQuery datasource; per-service daily cost panels
+The 10-minute eviction window used the *current event's* timestamp as `now`. A late-arriving event (e.g. mobile-buffered event at t=200) arriving after newer events (t=1000) set `cutoff = 200 − 600 = −400`, which kept all events in state and incorrectly widened the window.
 
-**Done when:** Grafana dashboard shows all 6 metrics populated while the simulation framework is running at peak load.
-
----
-
-## Phase 2: Production Engineering
-
-**Prerequisite:** All Phase 1 test harness scenarios pass. ✅
-
-**Scope for this phase:** Pipeline correctness fixes, automated CI/CD, and a user simulation framework. Cloud deployment (GCP) and observability are deferred to Phase 3.
-
-### Step 2.1 — Feature-Pipeline Productionization
-
-**Branch:** `feat/feature-pipeline-productionization`
-
-Two correctness bugs identified under load:
-
-**Fix A: Event-Time Windowing**
-
-| Task | Detail |
+| Fix | Detail |
 |---|---|
-| Watermark strategy | Add bounded out-of-orderness (2s) to the Kafka source |
-| Window semantics | Switch `watch_count_10min`, `avg_watch_duration`, `recency_score` from `ProcessingTimeWindows` → `EventTimeWindows` |
-| Event time source | Use the existing `timestamp` field in the Kafka message payload |
+| `max_seen_event_time: float` | New field added to `UserFeatureState` (additive — safe per ADR 0004); tracks the highest event timestamp seen by this keyed partition |
+| Monotonic eviction | Eviction now uses `max(state.max_seen_event_time, now_epoch)` as the window boundary — ensures late events cannot retroactively expand the window |
+| State descriptor | `_USER_FEATURE_STATE_TYPE` in `pipeline.py` updated with the new field |
 
-**Fix B: Flink Checkpointing**
+**Bug B: No Restart Strategy (checkpointing without recovery)**
 
-| Task | Detail |
+Checkpointing was enabled (60s interval) but no restart strategy was configured. On any task failure, Flink used the default "no restarts" policy — checkpoints existed but were never used.
+
+| Fix | Detail |
 |---|---|
-| Enable checkpointing | `StreamExecutionEnvironment.enable_checkpointing(interval_ms=10_000)` |
-| Storage backend | Local filesystem for now; GCS swap is a one-liner at cloud deployment time |
-| Restart strategy | Fixed-delay: 3 attempts, 10s delay |
-| Known gap | Full stateful rebalancing across rescaling operators remains unsolved; checkpointing covers crash recovery only — documented in `services/feature-pipeline/CONTEXT.md` |
+| Restart strategy | `RestartStrategies.fixed_delay_restart(3, delay_between_attempts_ms=10_000)` — 3 attempts, 10s apart |
+| Existing checkpoint | 60s checkpoint interval retained; GCS backend swap remains a one-liner at cloud deployment time |
+| Known gap | Full stateful rebalancing across rescaling operators is still unsolved; restart strategy covers crash recovery only (documented in CONTEXT.md) |
 
 **Done when:** `FEATURE_PIPELINE_ENABLED=true pytest tests/scenarios/test_event_propagation.py tests/scenarios/test_feature_freshness.py` both pass.
 
 ---
 
-### Step 2.2 — GitHub Actions CI/CD
+> **Step 8 — Observability Stack:** Deferred to Phase 3. Most useful when the system runs under real load; building dashboards against a local docker-compose stack produces no actionable signal. See Phase 3 for details.
+
+---
+
+## Phase 2: Production Engineering
+
+**Prerequisite:** All Phase 1 test harness scenarios pass (Steps 0–7). ✅
+
+**Scope for this phase:** Automated CI/CD and a user simulation framework. Cloud deployment (GCP) and observability are deferred to Phase 3.
+
+### Step 2.1 — GitHub Actions CI/CD
 
 **Branch:** `ci/github-actions`
 
@@ -297,7 +278,7 @@ PR opened / push to main
 
 ---
 
-### Step 2.3 — User Simulation Framework
+### Step 2.2 — User Simulation Framework
 
 **Branch:** `test/simulation-framework`
 
