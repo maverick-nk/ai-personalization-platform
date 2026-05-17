@@ -10,7 +10,7 @@ from datetime import datetime
 from pyflink.common import WatermarkStrategy
 from pyflink.common.serialization import SimpleStringSchema
 from pyflink.common.typeinfo import Types
-from pyflink.datastream import KeyedProcessFunction, RuntimeContext, StreamExecutionEnvironment
+from pyflink.datastream import KeyedProcessFunction, RestartStrategies, RuntimeContext, StreamExecutionEnvironment
 from pyflink.datastream.connectors.kafka import KafkaOffsetsInitializer, KafkaSource
 from pyflink.datastream.state import ValueStateDescriptor
 
@@ -39,10 +39,11 @@ _WATCH_RECORD_TYPE = Types.ROW_NAMED(
     [Types.STRING(), Types.DOUBLE(), Types.DOUBLE(), Types.STRING()],
 )
 _USER_FEATURE_STATE_TYPE = Types.ROW_NAMED(
-    ["recent_watches", "session_genre_counts", "last_computed_at_epoch"],
+    ["recent_watches", "session_genre_counts", "last_computed_at_epoch", "max_seen_event_time"],
     [
         Types.LIST(_WATCH_RECORD_TYPE),
         Types.MAP(Types.STRING(), Types.DOUBLE()),
+        Types.DOUBLE(),
         Types.DOUBLE(),
     ],
 )
@@ -121,10 +122,11 @@ class FeatureProcessFunction(KeyedProcessFunction):
 
         state.recent_watches.append(record)
 
-        # Evict before computing — this is what enforces the 10-minute event-time
-        # window. We use the incoming event's timestamp as "now" rather than wall
-        # clock so out-of-order events don't corrupt the window boundary.
-        cutoff = now_epoch - self._cfg.window_size_seconds
+        # Advance the high-water mark monotonically — late-arriving events must not
+        # pull the boundary back. A mobile-buffered event at t=200 arriving after
+        # t=1000 events must not retroactively re-admit records evicted at t=1000.
+        state.max_seen_event_time = max(state.max_seen_event_time, now_epoch)
+        cutoff = state.max_seen_event_time - self._cfg.window_size_seconds
         state.recent_watches = [r for r in state.recent_watches if r.event_time_epoch >= cutoff]
 
         # Rebuild session_genre_counts from the surviving window rather than
@@ -219,9 +221,10 @@ def build_pipeline(
         .map(_parse_watch_event, output_type=Types.PICKLED_BYTE_ARRAY())
         .filter(lambda x: x is not None)
         .key_by(lambda x: x["pseudo_user_id"])
-        # no_watermarks: event-time windowing is enforced manually inside
-        # process_element using the event's own timestamp, avoiding the latency
-        # introduced by Flink's watermark waiting mechanism.
+        # no_watermarks: window eviction is enforced manually in process_element via
+        # state.max_seen_event_time (a per-partition monotonic high-water mark).
+        # This avoids Flink watermark waiting latency while still correctly handling
+        # late-arriving events — they cannot pull the window boundary backwards.
         .process(process_fn)
     )
 
@@ -240,6 +243,10 @@ def main() -> None:
     # the pipeline resumes from the last checkpoint rather than latest, preventing
     # event loss during planned restarts or crashes.
     env.enable_checkpointing(60_000)
+    # Without a restart strategy Flink's default is "no restarts" — checkpoints
+    # exist but are never used for recovery. Fixed-delay gives the JVM time to
+    # release resources before the next attempt.
+    env.set_restart_strategy(RestartStrategies.fixed_delay_restart(3, 10_000))
 
     connector_jar = _find_kafka_connector_jar()
     if connector_jar:
