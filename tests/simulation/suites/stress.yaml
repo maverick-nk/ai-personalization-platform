@@ -1,0 +1,26 @@
+name: stress
+test_type: stress
+peak_users: 500
+spawn_rate: 10
+duration: 20m
+# Step-ramp: add 100 users every 4 minutes until 500; hold the rest of the run.
+ramp_profile:
+  - {from: 0,   to: 100, over: 2m}
+  - {hold: 2m}
+  - {from: 100, to: 200, over: 2m}
+  - {hold: 2m}
+  - {from: 200, to: 350, over: 2m}
+  - {hold: 2m}
+  - {from: 350, to: 500, over: 2m}
+  - {hold: 4m}
+user_behavior:
+  watch_probability: 0.7
+  consent_revoke_probability: 0.02
+  genre_distribution:
+    action: 0.3
+    drama: 0.4
+    comedy: 0.3
+  session_length_mean_s: 30
+assertions:
+  latency_p95_ms: 200
+  error_rate_pct: 5

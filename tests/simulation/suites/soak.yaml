@@ -1,0 +1,20 @@
+name: soak
+test_type: soak
+peak_users: 50
+spawn_rate: 5
+duration: 60m
+# Quick ramp-up, then hold steady for the full duration to surface slow degradation.
+ramp_profile:
+  - {from: 0, to: 50, over: 2m}
+  - {hold: 58m}
+user_behavior:
+  watch_probability: 0.7
+  consent_revoke_probability: 0.03
+  genre_distribution:
+    action: 0.3
+    drama: 0.4
+    comedy: 0.3
+  session_length_mean_s: 60
+assertions:
+  latency_p95_ms: 100
+  error_rate_pct: 1

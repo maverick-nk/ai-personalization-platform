@@ -138,7 +138,111 @@ Tests generate UUID-based user IDs (`e2e-<12 hex chars>`). No cleanup is needed 
 
 ---
 
-## 8. Scenario Coverage
+## 8. User Simulation Tests (Locust)
+
+The simulation framework (`tests/simulation/`) uses [Locust](https://locust.io) to drive realistic multi-user journeys (watch → recommend → consent) against the live stack. These tests are **not run in CI** — they require a running stack and are executed manually.
+
+### Install simulation dependencies
+
+```bash
+cd tests
+uv sync --extra simulation
+```
+
+### Suite files
+
+| Suite | Type | Peak users | Duration | When to run |
+|---|---|---|---|---|
+| `baseline.yaml` | load | 10 | 5m | Local smoke test after any change |
+| `prod_baseline.yaml` | load | 10 | 5m | Production SLO validation (deployed stack only) |
+| `stress.yaml` | stress | 500 | 20m | Find the breaking point — step-ramp to 500 |
+| `soak.yaml` | soak | 50 | 60m | Surface memory leaks or slow degradation |
+| `spike.yaml` | spike | 500 | 10m | Validate recovery after a sudden traffic burst |
+
+### Headless mode (batch / CI-equivalent)
+
+Results are saved as JSON to `tests/simulation/results/<suite-name>/<timestamp>.json`. Exit code is `0` if all assertions pass, `1` if any threshold is breached.
+
+```bash
+# Local smoke test
+PSEUDONYMIZE_SECRET=<secret> tests/.venv/bin/python -m tests.simulation.runner \
+  --suite tests/simulation/suites/baseline.yaml
+
+# Stress test
+PSEUDONYMIZE_SECRET=<secret> tests/.venv/bin/python -m tests.simulation.runner \
+  --suite tests/simulation/suites/stress.yaml
+```
+
+Override service URLs if not running on localhost defaults:
+
+```bash
+PSEUDONYMIZE_SECRET=<secret> \
+EVENT_INGESTION_URL=http://my-host:8000 \
+INFERENCE_URL=http://my-host:8002 \
+PRIVACY_URL=http://my-host:8001 \
+  tests/.venv/bin/python -m tests.simulation.runner \
+  --suite tests/simulation/suites/prod_baseline.yaml
+```
+
+### Web UI mode (interactive)
+
+Omit `--headless` and get real-time charts at **http://localhost:8089**. The suite config (user behavior, ramp profile) is still loaded from the YAML file. Results are **not** saved to JSON in this mode.
+
+```bash
+PSEUDONYMIZE_SECRET=<secret> tests/.venv/bin/python -m tests.simulation.runner \
+  --suite tests/simulation/suites/baseline.yaml \
+  --web
+```
+
+Then open **http://localhost:8089**. Key UI tabs:
+- **Charts** — live requests/s, response time, failure rate graphs
+- **Statistics** — per-endpoint p50/p95/p99 table updating every second
+- **Failures** — error details and HTTP status codes
+- **Download Data** — on-demand CSV export
+
+You can adjust user count and spawn rate from the UI without restarting the runner.
+
+### Interpreting results
+
+```json
+{
+  "suite": "baseline",
+  "test_type": "load",
+  "total_requests": 241,
+  "error_rate_pct": 0.0,
+  "latency_ms": { "p50": 8.0, "p95": 40.0, "p99": 160.0 },
+  "endpoints": {
+    "watch":         { "p95_ms": 21.0, "count": 170, "errors": 0 },
+    "recommend":     { "p95_ms": 64.0, "count": 61,  "errors": 0 },
+    "consent_grant": { "p95_ms": 170.0, "count": 10, "errors": 0 }
+  },
+  "assertions": {
+    "latency_p95_ms": { "threshold": 500.0, "actual": 170.0, "passed": true },
+    "error_rate_pct": { "threshold": 5.0,   "actual": 0.0,   "passed": true }
+  },
+  "passed": true
+}
+```
+
+**High p95 on `consent_grant`** — expected on a cold local stack; consent_grant is a database write to Postgres and fires only once per virtual user at startup. It does not represent steady-state traffic.
+
+**High p95 on `recommend`** — the inference-api performs a Redis lookup, a privacy check, and model inference. If p95 is consistently above the suite threshold, check Redis latency (`redis-cli ping`), privacy-service logs, and whether a model is loaded in MLflow.
+
+**Low request count** — controlled by `session_length_mean_s` in the suite YAML (mean sleep between actions). Lower it to generate higher throughput for throughput-focused tests.
+
+### Thresholds
+
+| Suite | `latency_p95_ms` | `error_rate_pct` | Notes |
+|---|---|---|---|
+| `baseline.yaml` | 500 | 5 | Relaxed for local dev — cold services, no JVM warmup |
+| `prod_baseline.yaml` | 50 | 1 | Matches the production SLO from `CLAUDE.md` |
+| `stress.yaml` | 200 | 5 | Expects degradation; focus is finding the break point |
+| `soak.yaml` | 100 | 1 | Steady-state; alert on gradual latency increase |
+| `spike.yaml` | 500 | 10 | Focus is recovery speed, not peak latency |
+
+---
+
+## 9. Scenario Coverage
 
 | Scenario | Marker | Services Required | Notes |
 |---|---|---|---|
