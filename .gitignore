@@ -17,3 +17,6 @@ __pycache__/
 # Test / tooling caches
 .pytest_cache/
 .ruff_cache/
+
+# Simulation run results (generated locally; not committed)
+tests/simulation/results/
