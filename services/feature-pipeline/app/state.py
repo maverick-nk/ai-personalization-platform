@@ -39,6 +39,10 @@ class UserFeatureState:
     session_genre_counts: dict[str, float] = field(default_factory=dict)
     # Wall-clock time of the last feature write; informational only.
     last_computed_at_epoch: float = 0.0
+    # Monotonic high-water mark of event timestamps seen by this keyed partition.
+    # Eviction always uses this value so late-arriving events cannot retroactively
+    # pull the window boundary back and re-admit already-evicted records.
+    max_seen_event_time: float = 0.0
 
     def to_row(self):
         from pyflink.common import Row
@@ -46,6 +50,7 @@ class UserFeatureState:
             [r.to_row() for r in self.recent_watches],
             self.session_genre_counts,
             self.last_computed_at_epoch,
+            self.max_seen_event_time,
         )
 
     @classmethod
@@ -56,4 +61,5 @@ class UserFeatureState:
             # plain Python dict so downstream code can use .get() and .items().
             session_genre_counts=dict(row[1]) if row[1] else {},
             last_computed_at_epoch=row[2] or 0.0,
+            max_seen_event_time=row[3] or 0.0,
         )

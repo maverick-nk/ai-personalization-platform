@@ -69,6 +69,7 @@ docker-compose healthcheck: `pgrep -f app.pipeline` with `start_period: 90s` (ac
 
 ## Recent Changes
 
+- 2026-05-16: Fixed late-event window expansion — added `max_seen_event_time` field to `UserFeatureState` (additive, safe per ADR 0004); eviction now uses monotonic high-water mark. Added `RestartStrategies.fixed_delay_restart(3, 10_000)` so crash recovery actually uses existing checkpoints.
 - 2026-05-15: Dockerized service — added Dockerfile (`python:3.11-slim` + JDK + pemja build deps), docker-compose entry, `.dockerignore`; added `setuptools<70` to `pipeline` extra (pkg_resources fix); pinned healthcheck to `pgrep -f app.pipeline`; switched CMD to `/app/.venv/bin/python -m app.pipeline` with PATH/PYFLINK_PYTHON env vars for Flink worker discovery
 - 2026-04-23: Hardened pipeline — switched state serialization from PICKLED_BYTE_ARRAY to RowTypeInfo, moved Redis string encoding into RedisSink, fixed ParquetSink lock pattern (drain-then-write), added Flink checkpointing (60s), fixed session_genre_counts to rebuild from eviction window; 29 unit + 3 integration tests passing
 - 2026-04-19: Initial implementation (Step 2)
@@ -79,9 +80,11 @@ docker-compose healthcheck: `pgrep -f app.pipeline` with `start_period: 90s` (ac
 
 ## Flags
 
-⚑ PRODUCTIONIZATION — Event-time windowing: current 10-min window eviction uses `time.time()` (processing time), not Flink watermarks. Late-arriving events (e.g. mobile buffering) may be incorrectly evicted. Switch to native event-time windowing with `WatermarkStrategy` when moving to production with real mobile clients.
+✅ Event-time windowing: fixed — eviction now uses `state.max_seen_event_time` (a per-partition monotonic high-water mark) so late-arriving events cannot retroactively pull the window boundary back.
 
-⚑ PRODUCTIONIZATION — Stateful rebalancing: per-user `ValueState` lives in the local task manager. If parallelism > 1 or a second pipeline instance starts, Kafka triggers a rebalance and the new instance starts with empty state for reassigned partitions (feature windows reset). Fix by migrating to a remote state backend (RocksDB + S3/GCS) before scaling beyond a single instance.
+✅ Restart strategy: fixed — `RestartStrategies.fixed_delay_restart(3, 10_000)` added so checkpoints are actually used for crash recovery.
+
+⚑ DEFERRED (cloud deployment) — Stateful rebalancing: per-user `ValueState` lives in the local task manager. Scaling beyond parallelism=1 will reset feature windows for reassigned partitions. Fix requires a remote state backend (RocksDB + cloud object storage) — deferred to cloud deployment phase.
 
 ---
 
