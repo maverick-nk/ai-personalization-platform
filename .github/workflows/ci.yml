@@ -31,9 +31,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
       - name: Install dependencies
         working-directory: services/${{ matrix.service }}
-        run: uv sync --frozen --no-dev
+        run: uv sync --frozen
       - name: Run unit tests
         working-directory: services/${{ matrix.service }}
         env:
