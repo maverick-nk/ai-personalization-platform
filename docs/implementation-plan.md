@@ -9,8 +9,8 @@
 
 | Phase | Scope | Status |
 |---|---|---|
-| Phase 1 | Core system — all services, end-to-end data flow, pipeline bug fixes | 🔄 In progress (Steps 0–6 ✅, Step 7 in progress) |
-| Phase 2 | Production engineering — CI/CD, user simulation framework | Pending Phase 1 |
+| Phase 1 | Core system — all services, end-to-end data flow verified by test harness | ✅ Complete (Steps 0–6) |
+| Phase 2 | Production engineering — CI/CD, user simulation framework | 🔄 In progress |
 | Phase 3 | Cloud deployment (GCP) + Observability | Deferred |
 
 ---
@@ -212,43 +212,9 @@ User behavior profiles:
 
 ---
 
-### Step 7 — Feature Pipeline Bug Fixes
-
-**Branch:** `fix/feature-pipeline-correctness`
-
-Two correctness bugs in `services/feature-pipeline/` identified and fixed as part of Phase 1 completion. Both affect result correctness under production traffic patterns.
-
-**Bug A: Late-Event Window Expansion**
-
-The 10-minute eviction window used the *current event's* timestamp as `now`. A late-arriving event (e.g. mobile-buffered event at t=200) arriving after newer events (t=1000) set `cutoff = 200 − 600 = −400`, which kept all events in state and incorrectly widened the window.
-
-| Fix | Detail |
-|---|---|
-| `max_seen_event_time: float` | New field added to `UserFeatureState` (additive — safe per ADR 0004); tracks the highest event timestamp seen by this keyed partition |
-| Monotonic eviction | Eviction now uses `max(state.max_seen_event_time, now_epoch)` as the window boundary — ensures late events cannot retroactively expand the window |
-| State descriptor | `_USER_FEATURE_STATE_TYPE` in `pipeline.py` updated with the new field |
-
-**Bug B: No Restart Strategy (checkpointing without recovery)**
-
-Checkpointing was enabled (60s interval) but no restart strategy was configured. On any task failure, Flink used the default "no restarts" policy — checkpoints existed but were never used.
-
-| Fix | Detail |
-|---|---|
-| Restart strategy | `RestartStrategies.fixed_delay_restart(3, delay_between_attempts_ms=10_000)` — 3 attempts, 10s apart |
-| Existing checkpoint | 60s checkpoint interval retained; GCS backend swap remains a one-liner at cloud deployment time |
-| Known gap | Full stateful rebalancing across rescaling operators is still unsolved; restart strategy covers crash recovery only (documented in CONTEXT.md) |
-
-**Done when:** `FEATURE_PIPELINE_ENABLED=true pytest tests/scenarios/test_event_propagation.py tests/scenarios/test_feature_freshness.py` both pass.
-
----
-
-> **Step 8 — Observability Stack:** Deferred to Phase 3. Most useful when the system runs under real load; building dashboards against a local docker-compose stack produces no actionable signal. See Phase 3 for details.
-
----
-
 ## Phase 2: Production Engineering
 
-**Prerequisite:** All Phase 1 test harness scenarios pass (Steps 0–7). ✅
+**Prerequisite:** All Phase 1 test harness scenarios pass. ✅
 
 **Scope for this phase:** Automated CI/CD and a user simulation framework. Cloud deployment (GCP) and observability are deferred to Phase 3.
 
