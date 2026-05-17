@@ -1,0 +1,24 @@
+name: spike
+test_type: spike
+peak_users: 500
+spawn_rate: 100
+duration: 10m
+# Hold at baseline, spike hard, recover back.
+ramp_profile:
+  - {from: 0,   to: 20,  over: 1m}
+  - {hold: 2m}
+  - {from: 20,  to: 500, over: 30s}
+  - {hold: 2m}
+  - {from: 500, to: 20,  over: 30s}
+  - {hold: 4m}
+user_behavior:
+  watch_probability: 0.6
+  consent_revoke_probability: 0.01
+  genre_distribution:
+    action: 0.3
+    drama: 0.4
+    comedy: 0.3
+  session_length_mean_s: 20
+assertions:
+  latency_p95_ms: 500
+  error_rate_pct: 10

@@ -1,0 +1,20 @@
+name: baseline
+test_type: load
+peak_users: 10
+spawn_rate: 2
+duration: 5m
+ramp_profile:
+  - {from: 0, to: 10, over: 30s}
+  - {hold: 4m}
+  - {from: 10, to: 0, over: 30s}
+user_behavior:
+  watch_probability: 0.7
+  consent_revoke_probability: 0.05
+  genre_distribution:
+    action: 0.3
+    drama: 0.4
+    comedy: 0.3
+  session_length_mean_s: 45
+assertions:
+  latency_p95_ms: 50
+  error_rate_pct: 1
