@@ -4,7 +4,7 @@ path: /services/event-ingestion/
 status: active
 depends_on: [kafka*]
 depended_on_by: [tests]
-last_updated: 2026-04-18
+last_updated: 2026-05-16
 ---
 
 # Service: event-ingestion
@@ -16,11 +16,11 @@ Accepts raw user watch and session events via REST, validates schema, pseudonymi
 
 ## Current State
 
-- Version: 0.1.0
-- API contract: REST (FastAPI)
-- Key behaviors: schema validation, user ID pseudonymization before publish
+- Version: 0.1.2
+- API contract: REST (FastAPI), OpenAPI spec exported to `docs/api/event-ingestion.openapi.json`
+- Key behaviors: schema validation, user ID pseudonymization before publish, fire-and-forget Kafka delivery
 - Stack: Python 3.11, FastAPI, pydantic-settings, confluent-kafka
-- Entry point: `uv run uvicorn app.main:app`
+- Entry point: `uv run uvicorn app.main:app` (local) or Docker via docker-compose (port 8000)
 
 ---
 
@@ -34,9 +34,22 @@ Accepts raw user watch and session events via REST, validates schema, pseudonymi
 
 ---
 
+## Docker
+
+- Base: `python:3.11-slim`
+- uv binary copied from `ghcr.io/astral-sh/uv:latest`
+- `uv sync --frozen --no-dev` installs deps; no dev/test extras in image
+- `.dockerignore` excludes `.venv/`, `tests/`, `__pycache__/`, `*.pyc`, `.env`
+- CMD: `uv run uvicorn app.main:app --host 0.0.0.0 --port 8000`
+- docker-compose env: `KAFKA_BOOTSTRAP_SERVERS=kafka:9092` (internal listener), `PSEUDONYMIZE_SECRET` from host env
+
+---
+
 ## Recent Changes
 
-- 2026-04-18: Initial implementation — POST /events/watch, POST /events/session, GET /health, unit + integration tests
+- [2026-05-14] Dockerized — added Dockerfile and .dockerignore; service now runs in docker-compose (port 8000)
+- [2026-04-30] OpenAPI enrichment — field descriptions on all model fields, AcceptedResponse schema for 202 body, service-level description documenting pseudonymization boundary and fire-and-forget semantics, spec exported to `docs/api/event-ingestion.openapi.json`
+- [2026-04-18] Initial implementation — POST /events/watch, POST /events/session, GET /health, unit + integration tests
 
 ---
 
