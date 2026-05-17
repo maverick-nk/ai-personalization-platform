@@ -1,16 +1,17 @@
 # Implementation Plan
 
-> Status: In progress — architecture fully designed, implementation in progress.
-> Last updated: 2026-05-14
+> Status: Phase 1 complete. Phase 2 in progress.
+> Last updated: 2026-05-16
 
 ---
 
 ## Phases Overview
 
-| Phase | Scope | Goal |
+| Phase | Scope | Status |
 |---|---|---|
-| Phase 1 | Core system | All services running, end-to-end data flow verified by test harness |
-| Phase 2 | Production engineering | Dockerized, Kubernetes, CI/CD, load tested |
+| Phase 1 | Core system — all services, end-to-end data flow verified by test harness | ✅ Complete (Steps 0–6) |
+| Phase 2 | Production engineering — pipeline correctness, CI/CD, user simulation framework | 🔄 In progress |
+| Phase 3 | Cloud deployment (GCP) + Observability | Deferred |
 
 ---
 
@@ -213,7 +214,7 @@ User behavior profiles:
 
 ### Step 7 — Observability Stack
 
-**Branch:** `feat/observability`
+> **Deferred to Phase 3.** Observability is most useful when the system runs under real load in a production environment. Building dashboards against a local docker-compose stack produces no actionable signal. Step 7 will be implemented after GCP deployment is live and the simulation framework is generating traffic.
 
 **Stack:** Prometheus + Grafana
 
@@ -226,26 +227,134 @@ User behavior profiles:
 | `consent_revocations_total` | Privacy service | Audit signal |
 | `cold_start_fallback_rate` | Inference API | Cold start prevalence |
 
-Deliverables:
-- Prometheus scrape endpoints in each Python and Go service
-- `docker-compose` includes Prometheus + Grafana containers
+Deliverables (Phase 3):
+- Prometheus scrape endpoints (`/metrics`) in each Python service
+- `docker-compose` and GKE manifests include Prometheus + Grafana
 - Grafana dashboard JSON checked into `infra/grafana/`
 - Alert rule for `feature_age_seconds > 5`
+- Separate cost dashboard: GCP Billing → BigQuery → Grafana BigQuery datasource; per-service daily cost panels
 
-**Done when:** Grafana dashboard shows all 6 metrics populated after running the test harness.
+**Done when:** Grafana dashboard shows all 6 metrics populated while the simulation framework is running at peak load.
 
 ---
 
 ## Phase 2: Production Engineering
 
-**Prerequisite:** All Phase 1 test harness scenarios pass.
+**Prerequisite:** All Phase 1 test harness scenarios pass. ✅
+
+**Scope for this phase:** Pipeline correctness fixes, automated CI/CD, and a user simulation framework. Cloud deployment (GCP) and observability are deferred to Phase 3.
+
+### Step 2.1 — Feature-Pipeline Productionization
+
+**Branch:** `feat/feature-pipeline-productionization`
+
+Two correctness bugs identified under load:
+
+**Fix A: Event-Time Windowing**
+
+| Task | Detail |
+|---|---|
+| Watermark strategy | Add bounded out-of-orderness (2s) to the Kafka source |
+| Window semantics | Switch `watch_count_10min`, `avg_watch_duration`, `recency_score` from `ProcessingTimeWindows` → `EventTimeWindows` |
+| Event time source | Use the existing `timestamp` field in the Kafka message payload |
+
+**Fix B: Flink Checkpointing**
+
+| Task | Detail |
+|---|---|
+| Enable checkpointing | `StreamExecutionEnvironment.enable_checkpointing(interval_ms=10_000)` |
+| Storage backend | Local filesystem for now; GCS swap is a one-liner at cloud deployment time |
+| Restart strategy | Fixed-delay: 3 attempts, 10s delay |
+| Known gap | Full stateful rebalancing across rescaling operators remains unsolved; checkpointing covers crash recovery only — documented in `services/feature-pipeline/CONTEXT.md` |
+
+**Done when:** `FEATURE_PIPELINE_ENABLED=true pytest tests/scenarios/test_event_propagation.py tests/scenarios/test_feature_freshness.py` both pass.
+
+---
+
+### Step 2.2 — GitHub Actions CI/CD
+
+**Branch:** `ci/github-actions`
+
+**Current state:** Only `check-readme-skills.yml` exists. A `ci/code-analysis-sonarcloud` branch has Ruff + Bandit — merged into this workflow.
+
+**Pipeline: `.github/workflows/ci.yml`**
+
+```
+PR opened / push to main
+├── lint     ruff check + bandit (all Python services)
+├── test     docker-compose up -d → uv run pytest -m "not slow"
+└── build    docker build for each service image (no push — deferred to Phase 3)
+```
+
+| Task | Detail |
+|---|---|
+| Lint | `ruff check services/` + `bandit -r services/` |
+| Test | Bring up stack via docker-compose; run fast test suite; teardown |
+| GitHub Secret | `PSEUDONYMIZE_SECRET` — required by `conftest.py` skip gate |
+| Build | Docker build for all 5 service images; fail fast on build errors |
+
+**Done when:** Test PR → all three jobs green.
+
+---
+
+### Step 2.3 — User Simulation Framework
+
+**Branch:** `test/simulation-framework`
+
+**Why Locust instead of k6:** The platform requires stateful user journeys (watch → recommendation → watch → consent revocation), not just endpoint hammering. Locust defines `UserBehavior` classes in Python, handles configurable spawn rate and ramp profiles, and reports p50/p95/p99 latency — covering both simulation and SLO validation in one tool. When deployed on GCP, Locust workers scale as GKE pods using the same YAML configs.
+
+**Directory layout:**
+
+```
+tests/simulation/
+├── behaviors/
+│   └── user.py              # Locust UserBehavior: watch, consent, recommendation journeys
+├── suites/
+│   ├── baseline.yaml        # Smoke: 10 users, 5m
+│   ├── peak_traffic.yaml    # 500 peak users, 20m
+│   └── consent_storm.yaml   # Consent-revocation heavy
+├── runner.py                # Reads YAML suite, drives Locust headlessly
+└── results/                 # Per-run result snapshots (JSON); large files gitignored
+```
+
+**YAML suite format:**
+
+```yaml
+name: peak_traffic
+users: 200
+peak_users: 500
+duration: 20m
+ramp_profile:
+  - {from: 0, to: 500, over: 5m}
+  - {hold: 10m}
+  - {from: 500, to: 0, over: 5m}
+user_behavior:
+  watch_probability: 0.7
+  genre_distribution: {action: 0.3, drama: 0.4, comedy: 0.3}
+  session_length_mean_s: 45
+assertions:
+  latency_p95_ms: 50
+  error_rate_pct: 1
+```
+
+**Replayability:** Each YAML suite is the replayable record. Re-running the same file against the updated system validates that the system still meets the same SLOs. Each run writes a results snapshot to `results/<suite-name>/<timestamp>.json` (p50/p95/p99, error rate, assertion pass/fail) for cross-run comparison.
+
+**Assertions:** `events.test_stop` hook reads YAML assertions; exits non-zero if any threshold is breached — picked up by CI.
+
+**Done when:** `python tests/simulation/runner.py --suite tests/simulation/suites/baseline.yaml` exits 0 with p95 < 50ms.
+
+---
+
+## Phase 3: Cloud Deployment + Observability (Deferred)
+
+**Prerequisite:** Phase 2 complete.
 
 | Task | Branch | Detail |
 |---|---|---|
-| Dockerize all services | `infra/dockerize-services` | Dockerfile per service, multi-stage builds |
-| Local Kubernetes | `infra/kubernetes` | kind/minikube manifests; health/readiness probes |
-| GitHub Actions CI/CD | `ci/github-actions` | lint → test → build → push on PR merge |
-| k6 load testing | `test/load-testing-k6` | Ramp test for `GetRecommendations`; validate <50ms p95 under load |
+| GCP deployment | `infra/gcp` | GKE for orchestration; Memorystore (Redis); Cloud SQL (Postgres); GCS (Parquet + Flink checkpoints); Artifact Registry (images); self-managed Kafka/Flink/MLflow on GKE |
+| Observability | `feat/observability` | Step 7 (see above) — Prometheus + Grafana deployed to GKE |
+| Cloud cost dashboard | `infra/cost-dashboard` | GCP Billing → BigQuery export; Grafana BigQuery datasource; per-service cost panels via resource labels |
+| Locust on GKE | `test/simulation-gke` | Locust master + worker pods; same YAML suites, cloud-scale spawn |
 
 ---
 
@@ -257,7 +366,8 @@ Deliverables:
 | `infra/` | Infrastructure, Docker, Kubernetes, config |
 | `ci/` | CI/CD pipelines, GitHub Actions |
 | `fix/` | Bug fixes |
-| `test/` | Test harness, load tests |
+| `test/` | Test harness, load tests, simulation framework |
+| `sim/` | Simulation suite configs and behaviors |
 | `docs/` | Documentation only |
 | `chore/` | Dependency bumps, cleanup, tooling |
 
