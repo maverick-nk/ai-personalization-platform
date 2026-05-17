@@ -222,8 +222,6 @@ User behavior profiles:
 
 **Branch:** `ci/github-actions`
 
-**Current state:** Only `check-readme-skills.yml` exists. A `ci/code-analysis-sonarcloud` branch has Ruff + Bandit — merged into this workflow.
-
 **Pipeline: `.github/workflows/ci.yml`**
 
 ```
