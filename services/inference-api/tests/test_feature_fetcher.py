@@ -1,5 +1,4 @@
 import pytest
-
 from app.feature_fetcher import _cast
 
 

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import pytest
 import httpx
-
+import pytest
 from app.privacy_client import PrivacyClient
 
 

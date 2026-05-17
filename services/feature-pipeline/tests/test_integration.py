@@ -31,10 +31,9 @@ TEST_PARQUET_PATH = "/tmp/test_parquet_feature_pipeline"
 
 @pytest.fixture(scope="module")
 def pipeline_thread():
-    from pyflink.datastream import StreamExecutionEnvironment
-
     from app.config import Settings
     from app.pipeline import _find_kafka_connector_jar, build_pipeline
+    from pyflink.datastream import StreamExecutionEnvironment
 
     cfg = Settings(
         kafka_bootstrap_servers=KAFKA_BOOTSTRAP,

@@ -2,8 +2,6 @@ import json
 import math
 from datetime import datetime, timezone
 
-import pytest
-
 from app.features import (
     compute_avg_watch_duration,
     compute_category_affinity_score,

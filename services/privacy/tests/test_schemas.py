@@ -1,7 +1,6 @@
 import pytest
-from pydantic import ValidationError
-
 from app.schemas import ConsentCheckResponse, ConsentUpdateRequest
+from pydantic import ValidationError
 
 
 def test_consent_update_requires_consent_granted():

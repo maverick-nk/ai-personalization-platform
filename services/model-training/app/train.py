@@ -7,9 +7,9 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import mlflow
-from mlflow.entities import LifecycleStage
 import numpy as np
 import pandas as pd
+from mlflow.entities import LifecycleStage
 from sklearn.metrics import roc_auc_score
 
 from app.config import Settings

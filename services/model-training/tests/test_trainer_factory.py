@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from app.trainer import BaseTrainer
 from app.trainers.factory import get_trainer
 from app.trainers.lightgbm import LightGBMTrainer

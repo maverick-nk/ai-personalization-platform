@@ -5,13 +5,12 @@ from unittest.mock import AsyncMock
 
 import numpy as np
 import pytest
-from httpx import ASGITransport, AsyncClient
-
 from app.catalog import build_catalog, build_trending
 from app.config import Settings
 from app.main import app
 from app.model_store import LoadedModel
 from app.scorers.base import BaseScorer
+from httpx import ASGITransport, AsyncClient
 
 
 class _FixedScorer(BaseScorer):

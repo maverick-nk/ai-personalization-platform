@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import json
-import numpy as np
-import pandas as pd
-import pytest
 
+import numpy as np
 from app.catalog import ContentItem
 from app.model_store import LoadedModel
 from app.scorer import _parse_genre_vector, score_and_rank
