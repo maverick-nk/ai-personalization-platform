@@ -11,7 +11,7 @@
 |---|---|---|
 | Phase 1 | Core system — all services, end-to-end data flow verified by test harness | ✅ Complete (Steps 0–6) |
 | Phase 2 | Production engineering — CI/CD, user simulation framework | 🔄 In progress |
-| Phase 3 | Cloud deployment (GCP) + Observability | Deferred |
+| Phase 3 | Cloud deployment + Observability | Deferred |
 
 ---
 
@@ -216,77 +216,19 @@ User behavior profiles:
 
 **Prerequisite:** All Phase 1 test harness scenarios pass. ✅
 
-**Scope for this phase:** Automated CI/CD and a user simulation framework. Cloud deployment (GCP) and observability are deferred to Phase 3.
+### Step 2.1 — CI/CD Pipeline
 
-### Step 2.1 — GitHub Actions CI/CD
+Automated pipeline that runs on every pull request: lint, test, and build. Ensures every change is validated before it reaches main.
 
-**Branch:** `ci/github-actions`
-
-**Pipeline: `.github/workflows/ci.yml`**
-
-```
-PR opened / push to main
-├── lint     ruff check + bandit (all Python services)
-├── test     docker-compose up -d → uv run pytest -m "not slow"
-└── build    docker build for each service image (no push — deferred to Phase 3)
-```
-
-| Task | Detail |
-|---|---|
-| Lint | `ruff check services/` + `bandit -r services/` |
-| Test | Bring up stack via docker-compose; run fast test suite; teardown |
-| GitHub Secret | `PSEUDONYMIZE_SECRET` — required by `conftest.py` skip gate |
-| Build | Docker build for all 5 service images; fail fast on build errors |
-
-**Done when:** Test PR → all three jobs green.
+**Done when:** Every PR triggers automated checks and all checks pass.
 
 ---
 
 ### Step 2.2 — User Simulation Framework
 
-**Branch:** `test/simulation-framework`
+A configurable client simulation framework that spawns multiple simulated users and drives the platform with realistic behaviour (watch events, recommendations, consent changes). Test suites are defined as config files specifying user count, peak traffic targets, ramp profile, duration, and behaviour characteristics. Each suite run stores a results snapshot so the same suite can be re-run against the system after changes to validate nothing regressed. Locust is a candidate tool for this.
 
-**Why Locust instead of k6:** The platform requires stateful user journeys (watch → recommendation → watch → consent revocation), not just endpoint hammering. Locust defines `UserBehavior` classes in Python, handles configurable spawn rate and ramp profiles, and reports p50/p95/p99 latency — covering both simulation and SLO validation in one tool. When deployed on GCP, Locust workers scale as GKE pods using the same YAML configs.
-
-**Directory layout:**
-
-```
-tests/simulation/
-├── behaviors/
-│   └── user.py              # Locust UserBehavior: watch, consent, recommendation journeys
-├── suites/
-│   ├── baseline.yaml        # Smoke: 10 users, 5m
-│   ├── peak_traffic.yaml    # 500 peak users, 20m
-│   └── consent_storm.yaml   # Consent-revocation heavy
-├── runner.py                # Reads YAML suite, drives Locust headlessly
-└── results/                 # Per-run result snapshots (JSON); large files gitignored
-```
-
-**YAML suite format:**
-
-```yaml
-name: peak_traffic
-users: 200
-peak_users: 500
-duration: 20m
-ramp_profile:
-  - {from: 0, to: 500, over: 5m}
-  - {hold: 10m}
-  - {from: 500, to: 0, over: 5m}
-user_behavior:
-  watch_probability: 0.7
-  genre_distribution: {action: 0.3, drama: 0.4, comedy: 0.3}
-  session_length_mean_s: 45
-assertions:
-  latency_p95_ms: 50
-  error_rate_pct: 1
-```
-
-**Replayability:** Each YAML suite is the replayable record. Re-running the same file against the updated system validates that the system still meets the same SLOs. Each run writes a results snapshot to `results/<suite-name>/<timestamp>.json` (p50/p95/p99, error rate, assertion pass/fail) for cross-run comparison.
-
-**Assertions:** `events.test_stop` hook reads YAML assertions; exits non-zero if any threshold is breached — picked up by CI.
-
-**Done when:** `python tests/simulation/runner.py --suite tests/simulation/suites/baseline.yaml` exits 0 with p95 < 50ms.
+**Done when:** A baseline suite runs end-to-end and results are recorded.
 
 ---
 
@@ -294,12 +236,12 @@ assertions:
 
 **Prerequisite:** Phase 2 complete.
 
-| Task | Branch | Detail |
-|---|---|---|
-| GCP deployment | `infra/gcp` | GKE for orchestration; Memorystore (Redis); Cloud SQL (Postgres); GCS (Parquet + Flink checkpoints); Artifact Registry (images); self-managed Kafka/Flink/MLflow on GKE |
-| Observability | `feat/observability` | Step 7 (see above) — Prometheus + Grafana deployed to GKE |
-| Cloud cost dashboard | `infra/cost-dashboard` | GCP Billing → BigQuery export; Grafana BigQuery datasource; per-service cost panels via resource labels |
-| Locust on GKE | `test/simulation-gke` | Locust master + worker pods; same YAML suites, cloud-scale spawn |
+| Task | Detail |
+|---|---|
+| Cloud deployment | Deploy all services to a managed cloud environment; swap local infrastructure for managed equivalents where appropriate |
+| Observability | Metrics, dashboards, and alerting across all services; most valuable under real production load |
+| Cloud cost dashboard | Separate dashboard tracking actual cloud spend per service |
+| Scaled simulation | Run the simulation framework at cloud scale to validate SLOs under production-level traffic |
 
 ---
 
@@ -312,7 +254,6 @@ assertions:
 | `ci/` | CI/CD pipelines, GitHub Actions |
 | `fix/` | Bug fixes |
 | `test/` | Test harness, load tests, simulation framework |
-| `sim/` | Simulation suite configs and behaviors |
 | `docs/` | Documentation only |
 | `chore/` | Dependency bumps, cleanup, tooling |
 
