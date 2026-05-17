@@ -1,7 +1,6 @@
-# Local development baseline — thresholds are relaxed to account for cold
-# services, no JVM warmup, and single-machine resource contention.
-# For production SLO validation use prod_baseline.yaml.
-name: baseline
+# Production SLO baseline — validates the <50ms p95 end-to-end target from CLAUDE.md.
+# Run against a warm, deployed stack (not local dev).
+name: prod_baseline
 test_type: load
 peak_users: 10
 spawn_rate: 2
@@ -19,5 +18,5 @@ user_behavior:
     comedy: 0.3
   session_length_mean_s: 10
 assertions:
-  latency_p95_ms: 500
-  error_rate_pct: 5
+  latency_p95_ms: 50
+  error_rate_pct: 1

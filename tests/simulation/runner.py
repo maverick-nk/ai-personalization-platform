@@ -1,7 +1,11 @@
 """CLI entry point for the user simulation framework.
 
 Usage:
+    # Headless (CI / batch):
     python -m tests.simulation.runner --suite tests/simulation/suites/baseline.yaml
+
+    # Web UI (interactive, real-time charts at http://localhost:8089):
+    python -m tests.simulation.runner --suite tests/simulation/suites/baseline.yaml --web
 
 Requires PSEUDONYMIZE_SECRET to be set. The full stack (event-ingestion,
 inference-api, privacy) must be running before invoking this script.
@@ -18,6 +22,8 @@ from pathlib import Path
 
 from tests.simulation import results as result_store
 from tests.simulation.config import Suite, load_suite
+
+_PYTHON = sys.executable
 
 _LOCUSTFILE = Path(__file__).parent / "locustfile.py"
 _RESULTS_DIR = Path(__file__).parent / "results"
@@ -41,7 +47,14 @@ def _print_assertions(snapshot: dict) -> None:
         print(f"  {key}: {result['actual']} / {result['threshold']}  [{status}]")
 
 
-def run(suite: Suite) -> bool:
+def _build_env() -> dict[str, str]:
+    repo_root = str(Path(__file__).parent.parent.parent)
+    env = os.environ.copy()
+    env["PYTHONPATH"] = repo_root + ((":" + env["PYTHONPATH"]) if env.get("PYTHONPATH") else "")
+    return env
+
+
+def run(suite: Suite, *, web: bool = False) -> bool:
     secret = os.environ.get("PSEUDONYMIZE_SECRET", "")
     if not secret:
         print("ERROR: PSEUDONYMIZE_SECRET is not set", file=sys.stderr)
@@ -49,12 +62,28 @@ def run(suite: Suite) -> bool:
 
     os.environ["SUITE_CONFIG"] = suite.model_dump_json()
 
+    host = os.environ.get("EVENT_INGESTION_URL", "http://localhost:8000")
+
+    if web:
+        # Interactive mode: omit --headless and timing flags so the user controls
+        # the run from the browser. Results are NOT saved (no CSV).
+        cmd = [
+            _PYTHON, "-m", "locust",
+            "--locustfile", str(_LOCUSTFILE),
+            "--host", host,
+        ]
+        print("\nStarting Locust web UI — open http://localhost:8089")
+        print(f"Suite config injected: {suite.name} ({suite.test_type}, {suite.peak_users} users)")
+        print("Press Ctrl+C to stop.\n")
+        subprocess.run(cmd, env=_build_env())
+        return True
+
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     csv_prefix = str(_RESULTS_DIR / suite.name / ts)
     Path(csv_prefix).parent.mkdir(parents=True, exist_ok=True)
 
     cmd = [
-        "locust",
+        _PYTHON, "-m", "locust",
         "--headless",
         "--locustfile", str(_LOCUSTFILE),
         "--users", str(suite.peak_users),
@@ -62,15 +91,11 @@ def run(suite: Suite) -> bool:
         "--run-time", f"{suite.duration_s}s",
         "--csv", csv_prefix,
         "--exit-code-on-error", "0",
+        "--host", host,
     ]
 
-    # locustfile.py reads EVENT_INGESTION_URL, INFERENCE_URL, PRIVACY_URL directly from env.
-    # Locust requires --host for HttpUser subclasses, but PersonalizedUser extends User
-    # and manages its own clients — pass a dummy host to satisfy the CLI parser.
-    cmd += ["--host", os.environ.get("EVENT_INGESTION_URL", "http://localhost:8000")]
-
-    print(f"\nStarting: {' '.join(cmd)}\n")
-    result = subprocess.run(cmd)
+    print(f"\nStarting: {' '.join(str(c) for c in cmd)}\n")
+    result = subprocess.run(cmd, env=_build_env())
 
     if result.returncode != 0:
         print(f"Locust exited with code {result.returncode}", file=sys.stderr)
@@ -88,10 +113,15 @@ def run(suite: Suite) -> bool:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run a user simulation suite against the live stack")
     parser.add_argument("--suite", required=True, help="Path to a suite YAML file")
+    parser.add_argument(
+        "--web",
+        action="store_true",
+        help="Open Locust web UI at http://localhost:8089 instead of running headless",
+    )
     args = parser.parse_args()
 
     suite = load_suite(args.suite)
-    passed = run(suite)
+    passed = run(suite, web=args.web)
     sys.exit(0 if passed else 1)
 
 
