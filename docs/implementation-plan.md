@@ -1,16 +1,17 @@
 # Implementation Plan
 
-> Status: In progress — architecture fully designed, implementation in progress.
-> Last updated: 2026-05-14
+> Status: Phase 1 complete. Phase 2 in progress.
+> Last updated: 2026-05-16
 
 ---
 
 ## Phases Overview
 
-| Phase | Scope | Goal |
+| Phase | Scope | Status |
 |---|---|---|
-| Phase 1 | Core system | All services running, end-to-end data flow verified by test harness |
-| Phase 2 | Production engineering | Dockerized, Kubernetes, CI/CD, load tested |
+| Phase 1 | Core system — all services, end-to-end data flow verified by test harness | ✅ Complete (Steps 0–6) |
+| Phase 2 | Production engineering — CI/CD, user simulation framework | 🔄 In progress |
+| Phase 3 | Cloud deployment + Observability | Deferred |
 
 ---
 
@@ -211,41 +212,36 @@ User behavior profiles:
 
 ---
 
-### Step 7 — Observability Stack
+## Phase 2: Production Engineering
 
-**Branch:** `feat/observability`
+**Prerequisite:** All Phase 1 test harness scenarios pass. ✅
 
-**Stack:** Prometheus + Grafana
+### Step 2.1 — CI/CD Pipeline
 
-| Metric | Instrument In | Purpose |
-|---|---|---|
-| `inference_latency_ms` (p50/p95/p99) | Inference API | Latency SLO |
-| `feature_age_seconds` | Feature pipeline / Redis | Freshness alert |
-| `kafka_consumer_lag` | Feature pipeline | Processing lag |
-| `prediction_score_distribution` | Inference API | Model drift |
-| `consent_revocations_total` | Privacy service | Audit signal |
-| `cold_start_fallback_rate` | Inference API | Cold start prevalence |
+Automated pipeline that runs on every pull request: lint, test, and build. Ensures every change is validated before it reaches main.
 
-Deliverables:
-- Prometheus scrape endpoints in each Python and Go service
-- `docker-compose` includes Prometheus + Grafana containers
-- Grafana dashboard JSON checked into `infra/grafana/`
-- Alert rule for `feature_age_seconds > 5`
-
-**Done when:** Grafana dashboard shows all 6 metrics populated after running the test harness.
+**Done when:** Every PR triggers automated checks and all checks pass.
 
 ---
 
-## Phase 2: Production Engineering
+### Step 2.2 — User Simulation Framework
 
-**Prerequisite:** All Phase 1 test harness scenarios pass.
+A configurable client simulation framework that spawns multiple simulated users and drives the platform with realistic behaviour (watch events, recommendations, consent changes). Test suites are defined as config files specifying user count, peak traffic targets, ramp profile, duration, and behaviour characteristics. Each suite run stores a results snapshot so the same suite can be re-run against the system after changes to validate nothing regressed. Locust is a candidate tool for this.
 
-| Task | Branch | Detail |
-|---|---|---|
-| Dockerize all services | `infra/dockerize-services` | Dockerfile per service, multi-stage builds |
-| Local Kubernetes | `infra/kubernetes` | kind/minikube manifests; health/readiness probes |
-| GitHub Actions CI/CD | `ci/github-actions` | lint → test → build → push on PR merge |
-| k6 load testing | `test/load-testing-k6` | Ramp test for `GetRecommendations`; validate <50ms p95 under load |
+**Done when:** A baseline suite runs end-to-end and results are recorded.
+
+---
+
+## Phase 3: Cloud Deployment + Observability (Deferred)
+
+**Prerequisite:** Phase 2 complete.
+
+| Task | Detail |
+|---|---|
+| Cloud deployment | Deploy all services to a managed cloud environment; swap local infrastructure for managed equivalents where appropriate |
+| Observability | Metrics, dashboards, and alerting across all services; most valuable under real production load |
+| Cloud cost dashboard | Separate dashboard tracking actual cloud spend per service |
+| Scaled simulation | Run the simulation framework at cloud scale to validate SLOs under production-level traffic |
 
 ---
 
@@ -257,7 +253,7 @@ Deliverables:
 | `infra/` | Infrastructure, Docker, Kubernetes, config |
 | `ci/` | CI/CD pipelines, GitHub Actions |
 | `fix/` | Bug fixes |
-| `test/` | Test harness, load tests |
+| `test/` | Test harness, load tests, simulation framework |
 | `docs/` | Documentation only |
 | `chore/` | Dependency bumps, cleanup, tooling |
 
