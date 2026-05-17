@@ -10,11 +10,17 @@ from datetime import datetime
 from pyflink.common import WatermarkStrategy
 from pyflink.common.serialization import SimpleStringSchema
 from pyflink.common.typeinfo import Types
-from pyflink.datastream import KeyedProcessFunction, RestartStrategies, RuntimeContext, StreamExecutionEnvironment
+from pyflink.datastream import (
+    KeyedProcessFunction,
+    RestartStrategies,
+    RuntimeContext,
+    StreamExecutionEnvironment,
+)
 from pyflink.datastream.connectors.kafka import KafkaOffsetsInitializer, KafkaSource
 from pyflink.datastream.state import ValueStateDescriptor
 
-from .config import Settings, settings as default_settings
+from .config import Settings
+from .config import settings as default_settings
 from .features import (
     compute_avg_watch_duration,
     compute_category_affinity_score,

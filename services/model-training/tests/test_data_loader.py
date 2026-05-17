@@ -7,7 +7,6 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-
 from app.data_loader import load_parquet
 
 SCHEMA = pa.schema([

@@ -4,7 +4,6 @@ import json
 
 import pandas as pd
 import pytest
-
 from app.feature_engineering import (
     TIME_OF_DAY_CATEGORIES,
     build_feature_matrix,

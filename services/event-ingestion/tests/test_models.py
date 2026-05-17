@@ -1,7 +1,6 @@
 import pytest
-from pydantic import ValidationError
-
 from app.models import SessionEvent, WatchEvent
+from pydantic import ValidationError
 
 
 class TestWatchEvent:

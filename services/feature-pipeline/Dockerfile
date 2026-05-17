@@ -7,6 +7,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 # pemja's C extension (PyFlink's Python-Java bridge). procps provides pgrep
 # for the healthcheck.
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
     default-jdk-headless \
     gcc \
     libc6-dev \
@@ -32,7 +33,11 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --extra pipeline --frozen --no-dev --no-install-project
 
 # ── Application layer ───────────────────────────────────────────────────────
-COPY connectors/ connectors/
+# Download the Kafka connector JAR from Maven Central. Not bundled with
+# apache-flink-libraries; version must match the Flink 1.20.x series.
+RUN mkdir -p connectors && \
+    curl -fL -o connectors/flink-sql-connector-kafka-3.3.0-1.20.jar \
+    https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-kafka/3.3.0-1.20/flink-sql-connector-kafka-3.3.0-1.20.jar
 COPY app/ app/
 
 # Install the project itself (fast: editable install + script creation only).

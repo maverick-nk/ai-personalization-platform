@@ -152,8 +152,9 @@ async def test_audit_ordered_newest_first(client):
 # ── internal consent check ────────────────────────────────────────────────────
 
 async def test_internal_check_unknown_user_returns_false(client):
-    from app.pseudonymize import pseudonymize
     import os
+
+    from app.pseudonymize import pseudonymize
     secret = os.environ.get("PSEUDONYMIZE_SECRET", "test-secret")
     pseudo = pseudonymize("ghost-user", secret)
     resp = await client.get(f"/internal/consent/check/{pseudo}")

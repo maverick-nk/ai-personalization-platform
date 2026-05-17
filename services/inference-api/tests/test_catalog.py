@@ -1,5 +1,4 @@
 import pytest
-
 from app.catalog import build_catalog, build_trending
 from app.config import Settings
 
