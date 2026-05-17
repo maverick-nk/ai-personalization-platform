@@ -28,8 +28,8 @@ Accepts raw user watch and session events via REST, validates schema, pseudonymi
 
 - `app/config.py` — pydantic-settings reads `KAFKA_BOOTSTRAP_SERVERS` (default `localhost:29092`, EXTERNAL listener) and `PSEUDONYMIZE_SECRET` (required)
 - `app/pseudonymize.py` — HMAC-SHA256; raw `user_id` is never stored, logged, or published to Kafka
-- `app/producer.py` — fire-and-forget (`poll(0)`); delivery failures logged via callback, do not fail the HTTP request
-- Kafka messages carry `pseudo_user_id` (hex digest), never `user_id`
+- `app/producer.py` — fire-and-forget (`poll(0)`); delivery failures logged via callback, do not fail the HTTP request; messages keyed by `pseudo_user_id` bytes for consistent partition routing
+- Kafka messages carry `pseudo_user_id` (hex digest) as both the message key and payload field, never `user_id`
 - HTTP responses: 202 Accepted on success, 422 on schema violation
 
 ---
@@ -46,7 +46,7 @@ Accepts raw user watch and session events via REST, validates schema, pseudonymi
 ---
 
 ## Recent Changes
-
+- [2026-05-16] publish() now accepts optional key param; Kafka messages keyed by pseudo_user_id for per-user partition ordering
 - [2026-05-14] Dockerized — added Dockerfile and .dockerignore; service now runs in docker-compose (port 8000)
 - [2026-04-30] OpenAPI enrichment — field descriptions on all model fields, AcceptedResponse schema for 202 body, service-level description documenting pseudonymization boundary and fire-and-forget semantics, spec exported to `docs/api/event-ingestion.openapi.json`
 - [2026-04-18] Initial implementation — POST /events/watch, POST /events/session, GET /health, unit + integration tests
@@ -54,8 +54,6 @@ Accepts raw user watch and session events via REST, validates schema, pseudonymi
 ---
 
 ## Flags
-
-⚑ `producer.py` — `produce()` is called without a message key. With a single partition this is fine, but scaling to multiple partitions will distribute events round-robin, breaking per-user ordering. Fix: pass `key=pseudo_user_id.encode()` so Kafka routes all events for the same user to the same partition.
 
 ---
 
