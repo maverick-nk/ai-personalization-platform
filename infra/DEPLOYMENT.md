@@ -207,15 +207,11 @@ It does **not** grant:
 
 The binding is at the repository level (`personalization`), not the project level, so the SA cannot access any other Artifact Registry repository in the project.
 
+Create the SA now. The IAM binding on the repository is applied automatically by `terraform apply` (Part 2) — the `artifact-registry` Terraform module includes a `google_artifact_registry_repository_iam_member` resource for this SA.
+
 ```bash
 gcloud iam service-accounts create cicd-image-pusher \
   --display-name "CI/CD Image Pusher" \
-  --project=$PROJECT_ID
-
-gcloud artifacts repositories add-iam-policy-binding personalization \
-  --location=$REGION \
-  --member="serviceAccount:cicd-image-pusher@${PROJECT_ID}.iam.gserviceaccount.com" \
-  --role=roles/artifactregistry.writer \
   --project=$PROJECT_ID
 ```
 
