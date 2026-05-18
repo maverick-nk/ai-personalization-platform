@@ -30,12 +30,8 @@ gcloud components install gke-gcloud-auth-plugin kubectl
 You need a GCP project with billing enabled. All commands below use `$PROJECT_ID` and `$REGION` — set them once and verify before running any command:
 
 ```bash
-export PROJECT_ID=your-gcp-project-id   # e.g. my-project-123456
+export PROJECT_ID=your-gcp-project-id
 export REGION=us-central1
-
-# Verify both are set — if either prints blank, stop and re-export before continuing.
-echo "PROJECT_ID: $PROJECT_ID"
-echo "REGION:     $REGION"
 ```
 
 > **Common failure:** `gcloud storage buckets create` returns `400 The specified location constraint is not valid` when `$REGION` is empty. The command sends `--location=` (empty string) and GCS rejects it. Always run the `echo` check above in each new terminal session before proceeding.
@@ -70,8 +66,11 @@ gcloud storage buckets create gs://${PROJECT_ID}-tf-state-dev \
 
 gcloud storage buckets create gs://${PROJECT_ID}-tf-state-prod \
   --location=$REGION --project=$PROJECT_ID
+```
 
-# Enable versioning so you can recover from accidental state corruption
+Enable versioning so you can recover from accidental state corruption:
+
+```bash
 gcloud storage buckets update gs://${PROJECT_ID}-tf-state-dev --versioning
 gcloud storage buckets update gs://${PROJECT_ID}-tf-state-prod --versioning
 ```
@@ -194,26 +193,27 @@ Same predefined role gap as `feature-pipeline-sa`: create + get + list + delete 
 
 ---
 
-Grant the permissions. Run these after `terraform apply` for each environment — the buckets must exist first:
+> **These commands must run after `terraform apply` completes (Part 2).** The buckets are created by Terraform — running this before apply will produce 404 errors.
+
+Grant the permissions. The commands below have no inline comments so they paste cleanly into zsh:
 
 ```bash
 for ENV in dev prod; do
-  # feature-pipeline: write Parquet + manage Flink checkpoints
   gcloud storage buckets add-iam-policy-binding gs://${PROJECT_ID}-parquet-${ENV} \
     --member="serviceAccount:feature-pipeline-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
     --role=roles/storage.objectAdmin
 
-  # model-training: read Parquet partitions for training input (no write needed)
   gcloud storage buckets add-iam-policy-binding gs://${PROJECT_ID}-parquet-${ENV} \
     --member="serviceAccount:model-training-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
     --role=roles/storage.objectViewer
 
-  # mlflow: proxy all artifact reads and writes (--serve-artifacts mode)
   gcloud storage buckets add-iam-policy-binding gs://${PROJECT_ID}-mlflow-artifacts-${ENV} \
     --member="serviceAccount:mlflow-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
     --role=roles/storage.objectAdmin
 done
 ```
+
+> **zsh note:** zsh does not treat `#` as a comment character in interactive shells by default. Never paste shell snippets with inline comments directly into a zsh terminal — they will be interpreted as commands and fail. Either run them as a script file (`bash script.sh`) or use `setopt INTERACTIVE_COMMENTS` first.
 
 ### 1.5 Create the CI/CD image-push service account
 
@@ -249,14 +249,18 @@ The org policy blocks SA key creation, so GitHub Actions cannot use a downloaded
 
 Create a WIF pool and provider:
 
+Create the pool (once per project):
+
 ```bash
-# Create the pool (once per project)
 gcloud iam workload-identity-pools create github-actions \
   --location=global \
   --display-name="GitHub Actions" \
   --project=$PROJECT_ID
+```
 
-# Create the OIDC provider pointing at GitHub's OIDC issuer
+Create the OIDC provider pointing at GitHub's OIDC issuer:
+
+```bash
 gcloud iam workload-identity-pools providers create-oidc github \
   --location=global \
   --workload-identity-pool=github-actions \
@@ -268,8 +272,9 @@ gcloud iam workload-identity-pools providers create-oidc github \
 
 Allow tokens from this pool to impersonate `cicd-image-pusher` (scoped to your repo only via the attribute condition above):
 
+Get the pool's full resource name, then bind the SA:
+
 ```bash
-# Get the pool's full resource name
 POOL_NAME=$(gcloud iam workload-identity-pools describe github-actions \
   --location=global --project=$PROJECT_ID \
   --format="value(name)")
@@ -282,8 +287,9 @@ gcloud iam service-accounts add-iam-policy-binding \
 
 Add these two values to your GitHub Actions workflow (not secrets — they are not sensitive):
 
+Record these two values for your GitHub Actions workflow (they are not sensitive — no need to use GitHub Secrets):
+
 ```bash
-# Record these for the GitHub Actions workflow
 echo "WIF provider:"
 gcloud iam workload-identity-pools providers describe github \
   --location=global \
@@ -392,8 +398,9 @@ Prod has `deletion_protection = true` on the Cloud SQL instance and the GKE clus
 
 After the GKE cluster exists, bind each GCP service account to its Kubernetes counterpart. Run once per environment, substituting the correct namespace.
 
+Get cluster credentials first (Part 4 step 4.1), then run:
+
 ```bash
-# Get cluster credentials first (see Part 4, Step 4.1)
 for SA_PAIR in \
   "feature-pipeline-sa:feature-pipeline" \
   "model-training-sa:model-training" \
@@ -416,12 +423,16 @@ Run these steps after `terraform apply` completes for the target environment.
 
 ### 4.1 Configure kubectl
 
+For dev (zonal cluster):
+
 ```bash
-# Dev (zonal)
 gcloud container clusters get-credentials dev-platform-cluster \
   --zone=us-central1-a --project=$PROJECT_ID
+```
 
-# Prod (regional)
+For prod (regional cluster):
+
+```bash
 gcloud container clusters get-credentials prod-platform-cluster \
   --region=us-central1 --project=$PROJECT_ID
 ```
@@ -435,11 +446,12 @@ kubectl get nodes
 
 Several manifests contain `REPLACE_*` placeholders. Substitute them before applying. The easiest approach is a one-time sed pass from the repo root:
 
+Set these variables from your Terraform outputs:
+
 ```bash
-# Set these from the Terraform outputs
 export TF_REGION=us-central1
 export TF_PROJECT=$PROJECT_ID
-export TF_ENV=dev   # or prod
+export TF_ENV=dev
 
 find infra/k8s -type f -name "*.yaml" | xargs sed -i \
   -e "s/REPLACE_REGION/${TF_REGION}/g" \
@@ -524,21 +536,24 @@ MLFLOW_BUCKET=$(terraform -chdir=infra/terraform/environments/${TF_ENV} output -
 
 NS=ai-personalization-platform
 
-# Shared secrets consumed by most services
 kubectl create secret generic platform-secrets -n $NS \
   --from-literal=PSEUDONYMIZE_SECRET=$(openssl rand -hex 32) \
   --from-literal=REDIS_HOST=${REDIS_HOST} \
   --from-literal=REDIS_PORT=6379 \
   --from-literal=KAFKA_BOOTSTRAP_SERVERS=platform-kafka-kafka-bootstrap.kafka.svc.cluster.local:9092 \
   --from-literal=INFERENCE_MLFLOW_MODEL_NAME=personalization-click-model
+```
 
-# Privacy service secrets (DATABASE_URL + pseudonymize secret)
+The `PSEUDONYMIZE_SECRET` is read back from the secret just created so both secrets share the same value — not generated twice:
+
+```bash
+NS=ai-personalization-platform
+
 kubectl create secret generic privacy-secret -n $NS \
   --from-literal=DATABASE_URL="${PRIVACY_DB_URL}" \
   --from-literal=PSEUDONYMIZE_SECRET=$(kubectl get secret platform-secrets -n $NS \
     -o jsonpath='{.data.PSEUDONYMIZE_SECRET}' | base64 -d)
 
-# MLflow backend and artifact root
 kubectl create secret generic mlflow-db-secret -n $NS \
   --from-literal=MLFLOW_BACKEND_STORE_URI="${MLFLOW_DB_URL}" \
   --from-literal=MLFLOW_ARTIFACT_ROOT="gs://${MLFLOW_BUCKET}/"
@@ -550,17 +565,24 @@ kubectl create secret generic mlflow-db-secret -n $NS \
 
 Deploy in this order so dependencies are satisfied before dependents start.
 
+MLflow first — inference-api and model-training depend on it:
+
 ```bash
 NS=ai-personalization-platform
 
-# MLflow (required by inference-api and model-training)
 kubectl apply -f infra/k8s/mlflow/
+```
 
-# Privacy (has initContainer that runs alembic — wait for it to complete)
+Privacy has an initContainer that runs `alembic upgrade head` — wait for it before moving on:
+
+```bash
 kubectl apply -f infra/k8s/services/privacy/
 kubectl rollout status deployment/privacy -n $NS
+```
 
-# Event ingestion and inference API
+Then the stateless services:
+
+```bash
 kubectl apply -f infra/k8s/services/event-ingestion/
 kubectl apply -f infra/k8s/services/inference-api/
 ```
@@ -607,21 +629,19 @@ gcloud compute addresses describe ${TF_ENV}-ingress-ip \
 
 ### 4.11 Verify the deployment
 
+All pods should be `Running` or `Completed`:
+
 ```bash
-# All pods should be Running or Completed
 kubectl get pods -n ai-personalization-platform
 kubectl get pods -n kafka
+```
 
-# Kafka cluster should be Ready
+Kafka cluster `Ready`, Flink `Running`, HPA populated, Ingress assigned an address:
+
+```bash
 kubectl get kafka -n kafka
-
-# Flink deployment should be Running
 kubectl get flinkdeployment -n ai-personalization-platform
-
-# HPA should show current/desired replica counts
 kubectl get hpa -n ai-personalization-platform
-
-# Check Ingress has an address
 kubectl get ingress -n ai-personalization-platform
 ```
 
@@ -646,25 +666,30 @@ kubectl get ingress -n ai-personalization-platform
 
 Before applying `kafka-cluster.yaml` in prod, update the replicas and replication factors:
 
-```bash
-# In kafka-cluster.yaml
-# KafkaNodePool: replicas: 3
-# Kafka config:
-#   offsets.topic.replication.factor: 3
-#   transaction.state.log.replication.factor: 3
-#   transaction.state.log.min.isr: 2
-#   default.replication.factor: 3
-#   min.insync.replicas: 2
+```yaml
+KafkaNodePool:
+  replicas: 3
+
+Kafka config:
+  offsets.topic.replication.factor: 3
+  transaction.state.log.replication.factor: 3
+  transaction.state.log.min.isr: 2
+  default.replication.factor: 3
+  min.insync.replicas: 2
 ```
 
 ### Disabling prod deletion protection (before destroy)
 
+Cloud SQL:
+
 ```bash
-# Cloud SQL
 gcloud sql instances patch prod-platform-pg \
   --no-deletion-protection --project=$PROJECT_ID
+```
 
-# GKE cluster — edit Terraform and apply, or patch via gcloud
+GKE cluster:
+
+```bash
 gcloud container clusters update prod-platform-cluster \
   --no-enable-deletion-protection \
   --region=us-central1 --project=$PROJECT_ID
