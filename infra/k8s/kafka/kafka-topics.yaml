@@ -1,0 +1,13 @@
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: watch-events
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: platform-kafka
+spec:
+  partitions: 6
+  replicas: 1   # dev; set to 3 for prod
+  config:
+    retention.ms: "604800000"   # 7 days
+    segment.bytes: "1073741824" # 1 GB

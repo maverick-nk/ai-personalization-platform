@@ -1,0 +1,40 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: model-training
+  namespace: ai-personalization-platform
+spec:
+  schedule: "0 2 * * *"  # 2am UTC daily
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  successfulJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      template:
+        spec:
+          serviceAccountName: model-training
+          restartPolicy: OnFailure
+          nodeSelector:
+            cloud.google.com/gke-nodepool: apps-spot
+          containers:
+            - name: model-training
+              image: REPLACE_REGION-docker.pkg.dev/REPLACE_PROJECT/personalization/model-training:latest
+              command: ["uv", "run", "python", "-m", "app.train"]
+              envFrom:
+                - secretRef:
+                    name: platform-secrets
+              env:
+                - name: MODEL_TRAINING_PARQUET_BASE_PATH
+                  value: gs://REPLACE_PROJECT-parquet-REPLACE_ENV/
+                - name: MODEL_TRAINING_MLFLOW_TRACKING_URI
+                  value: "http://mlflow.ai-personalization-platform.svc.cluster.local:5001"
+                - name: MODEL_TRAINING_MLFLOW_MODEL_NAME
+                  value: "personalization-click-model"
+              resources:
+                requests:
+                  cpu: "500m"
+                  memory: "1Gi"
+                limits:
+                  cpu: "2"
+                  memory: "4Gi"

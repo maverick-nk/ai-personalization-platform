@@ -1,0 +1,40 @@
+apiVersion: flink.apache.org/v1beta1
+kind: FlinkDeployment
+metadata:
+  name: feature-pipeline
+  namespace: ai-personalization-platform
+spec:
+  image: REPLACE_REGION-docker.pkg.dev/REPLACE_PROJECT/personalization/feature-pipeline:latest
+  flinkVersion: v1_20
+  flinkConfiguration:
+    taskmanager.numberOfTaskSlots: "2"
+    state.checkpoints.dir: gs://REPLACE_PROJECT-parquet-REPLACE_ENV/checkpoints/
+    execution.checkpointing.interval: "30000"  # 30s checkpoint interval
+    execution.checkpointing.mode: EXACTLY_ONCE
+  serviceAccount: feature-pipeline
+  jobManager:
+    resource:
+      memory: "1024m"
+      cpu: 1
+  taskManager:
+    resource:
+      memory: "2048m"
+      cpu: 2
+  job:
+    jarURI: local:///app/.venv/lib/python3.11/site-packages/pyflink/lib/flink-dist.jar
+    entryClass: org.apache.flink.client.python.PythonDriver
+    args: ["-m", "app.pipeline"]
+    parallelism: 2
+    upgradeMode: stateless
+  podTemplate:
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-nodepool: apps-spot
+      envFrom:
+        - secretRef:
+            name: platform-secrets
+      env:
+        - name: PARQUET_BASE_PATH
+          value: gs://REPLACE_PROJECT-parquet-REPLACE_ENV/
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: platform-kafka-kafka-bootstrap.kafka.svc.cluster.local:9092

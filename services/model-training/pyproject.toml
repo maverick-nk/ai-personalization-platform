@@ -9,6 +9,7 @@ dependencies = [
     "pandas",
     "scikit-learn",
     "pydantic-settings",
+    "gcsfs>=2024.0",
 ]
 
 [dependency-groups]

@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inference-api
+  namespace: ai-personalization-platform
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: inference-api
+  template:
+    metadata:
+      labels:
+        app: inference-api
+    spec:
+      serviceAccountName: inference-api
+      nodeSelector:
+        cloud.google.com/gke-nodepool: apps-spot
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: inference-api
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: inference-api
+          image: REPLACE_REGION-docker.pkg.dev/REPLACE_PROJECT/personalization/inference-api:latest
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - secretRef:
+                name: platform-secrets
+          env:
+            - name: MLFLOW_TRACKING_URI
+              value: "http://mlflow.ai-personalization-platform.svc.cluster.local:5001"
+            - name: PRIVACY_URL
+              value: "http://privacy.ai-personalization-platform.svc.cluster.local:80"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 20

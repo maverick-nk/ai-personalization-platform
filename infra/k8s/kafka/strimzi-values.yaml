@@ -1,0 +1,6 @@
+# Strimzi Operator Helm values
+# Install: helm install strimzi-operator strimzi/strimzi-kafka-operator \
+#   -n kafka --create-namespace -f infra/k8s/kafka/strimzi-values.yaml
+watchAnyNamespace: false
+watchNamespaces:
+  - kafka

@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: event-ingestion
+  namespace: ai-personalization-platform
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: event-ingestion
+  template:
+    metadata:
+      labels:
+        app: event-ingestion
+    spec:
+      serviceAccountName: event-ingestion
+      nodeSelector:
+        cloud.google.com/gke-nodepool: apps-spot
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: event-ingestion
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: event-ingestion
+          # Replace with actual image from Artifact Registry after first push
+          image: REPLACE_REGION-docker.pkg.dev/REPLACE_PROJECT/personalization/event-ingestion:latest
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - secretRef:
+                name: platform-secrets
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20

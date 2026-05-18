@@ -1,0 +1,43 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: event-ingestion
+  namespace: ai-personalization-platform
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: inference-api
+  namespace: ai-personalization-platform
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: privacy
+  namespace: ai-personalization-platform
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: feature-pipeline
+  namespace: ai-personalization-platform
+  annotations:
+    # Workload Identity: bind to GCP SA for GCS access
+    iam.gke.io/gcp-service-account: feature-pipeline-sa@REPLACE_WITH_PROJECT_ID.iam.gserviceaccount.com
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: model-training
+  namespace: ai-personalization-platform
+  annotations:
+    iam.gke.io/gcp-service-account: model-training-sa@REPLACE_WITH_PROJECT_ID.iam.gserviceaccount.com
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mlflow
+  namespace: ai-personalization-platform
+  annotations:
+    iam.gke.io/gcp-service-account: mlflow-sa@REPLACE_WITH_PROJECT_ID.iam.gserviceaccount.com

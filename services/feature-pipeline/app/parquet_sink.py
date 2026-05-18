@@ -5,12 +5,15 @@ import threading
 import time
 import uuid
 from collections import defaultdict
-from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.parquet as pq
 
 from .config import Settings
+
+
+def _is_gcs(path: str) -> bool:
+    return path.startswith("gs://")
 
 log = logging.getLogger(__name__)
 
@@ -43,7 +46,9 @@ class ParquetSink:
         self._lock = threading.Lock()
 
     def open(self, runtime_context) -> None:
-        Path(self._settings.parquet_base_path).mkdir(parents=True, exist_ok=True)
+        if not _is_gcs(self._settings.parquet_base_path):
+            from pathlib import Path
+            Path(self._settings.parquet_base_path).mkdir(parents=True, exist_ok=True)
         self._last_flush_time = time.monotonic()
 
     def buffer(self, record: dict) -> None:
@@ -78,27 +83,36 @@ class ParquetSink:
         for r in records:
             by_date[r["event_date"]].append(r)
 
+        gcs = _is_gcs(self._settings.parquet_base_path)
         for event_date, date_records in by_date.items():
             year, month, day = event_date.split("-")
-            partition_path = (
-                Path(self._settings.parquet_base_path)
-                / f"year={year}"
-                / f"month={month}"
-                / f"day={day}"
-            )
-            partition_path.mkdir(parents=True, exist_ok=True)
-
+            partition_suffix = f"year={year}/month={month}/day={day}"
             # UUID filename prevents collisions when multiple workers or rapid flushes
             # land in the same partition — unlike a ms timestamp, UUIDs are globally unique.
             filename = f"batch_{uuid.uuid4().hex}.parquet"
+
+            if gcs:
+                base = self._settings.parquet_base_path.rstrip("/")
+                dest = f"{base}/{partition_suffix}/{filename}"
+            else:
+                from pathlib import Path
+                partition_path = (
+                    Path(self._settings.parquet_base_path)
+                    / f"year={year}"
+                    / f"month={month}"
+                    / f"day={day}"
+                )
+                partition_path.mkdir(parents=True, exist_ok=True)
+                dest = str(partition_path / filename)
+
             try:
                 table = pa.Table.from_pylist(date_records, schema=PARQUET_SCHEMA)
-                pq.write_table(table, partition_path / filename, compression="snappy")
-                log.debug("Wrote %d records to %s", len(date_records), partition_path / filename)
+                pq.write_table(table, dest, compression="snappy")
+                log.debug("Wrote %d records to %s", len(date_records), dest)
             except Exception:
                 log.exception(
                     "Failed to write Parquet batch (%d records) to %s",
-                    len(date_records), partition_path / filename,
+                    len(date_records), dest,
                 )
 
     def close(self) -> None:
