@@ -191,30 +191,6 @@ Same predefined role gap as `feature-pipeline-sa`: create + get + list + delete 
 
 **Cannot do:** access the parquet bucket, access Cloud SQL directly (connects via private IP using the DB URL in a Kubernetes secret), modify any IAM policy.
 
----
-
-> **These commands must run after `terraform apply` completes (Part 2).** The buckets are created by Terraform — running this before apply will produce 404 errors.
-
-Grant the permissions. The commands below have no inline comments so they paste cleanly into zsh:
-
-```bash
-for ENV in dev prod; do
-  gcloud storage buckets add-iam-policy-binding gs://${PROJECT_ID}-parquet-${ENV} \
-    --member="serviceAccount:feature-pipeline-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
-    --role=roles/storage.objectAdmin
-
-  gcloud storage buckets add-iam-policy-binding gs://${PROJECT_ID}-parquet-${ENV} \
-    --member="serviceAccount:model-training-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
-    --role=roles/storage.objectViewer
-
-  gcloud storage buckets add-iam-policy-binding gs://${PROJECT_ID}-mlflow-artifacts-${ENV} \
-    --member="serviceAccount:mlflow-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
-    --role=roles/storage.objectAdmin
-done
-```
-
-> **zsh note:** zsh does not treat `#` as a comment character in interactive shells by default. Never paste shell snippets with inline comments directly into a zsh terminal — they will be interpreted as commands and fail. Either run them as a script file (`bash script.sh`) or use `setopt INTERACTIVE_COMMENTS` first.
-
 ### 1.5 Create the CI/CD image-push service account
 
 **`cicd-image-pusher`** — used by GitHub Actions to push Docker images. Needs `roles/artifactregistry.writer` scoped to the single `personalization` repository.
@@ -391,6 +367,26 @@ terraform apply tfplan
 ```
 
 Prod has `deletion_protection = true` on the Cloud SQL instance and the GKE cluster. To tear it down you must first disable that flag manually.
+
+### 2.5 Grant Workload Identity SAs access to GCS buckets
+
+The GCS buckets now exist. Grant each SA the permissions described in §1.4:
+
+```bash
+for ENV in dev prod; do
+  gcloud storage buckets add-iam-policy-binding gs://${PROJECT_ID}-parquet-${ENV} \
+    --member="serviceAccount:feature-pipeline-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
+    --role=roles/storage.objectAdmin
+
+  gcloud storage buckets add-iam-policy-binding gs://${PROJECT_ID}-parquet-${ENV} \
+    --member="serviceAccount:model-training-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
+    --role=roles/storage.objectViewer
+
+  gcloud storage buckets add-iam-policy-binding gs://${PROJECT_ID}-mlflow-artifacts-${ENV} \
+    --member="serviceAccount:mlflow-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
+    --role=roles/storage.objectAdmin
+done
+```
 
 ---
 
