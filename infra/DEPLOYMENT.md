@@ -115,14 +115,30 @@ for BUCKET in \
 done
 ```
 
-Download the key and configure it locally:
+**Authenticate Terraform via SA impersonation (no key file needed)**
+
+Creating a SA key file is blocked by the org policy `constraints/iam.disableServiceAccountKeyCreation` — and rightly so: long-lived key files are a credential leak risk. Use **SA impersonation** instead: your personal `gcloud` identity generates short-lived tokens scoped to `terraform-operator` at runtime. No credential file is stored anywhere.
+
+Grant your user account permission to impersonate the SA:
 
 ```bash
-gcloud iam service-accounts keys create ~/terraform-sa-key.json \
-  --iam-account=terraform-operator@${PROJECT_ID}.iam.gserviceaccount.com
-
-export GOOGLE_APPLICATION_CREDENTIALS=~/terraform-sa-key.json
+gcloud iam service-accounts add-iam-policy-binding \
+  terraform-operator@${PROJECT_ID}.iam.gserviceaccount.com \
+  --member="user:$(gcloud config get-value account)" \
+  --role=roles/iam.serviceAccountTokenCreator
 ```
+
+Log in with your personal account and set the impersonation target:
+
+```bash
+gcloud auth application-default login
+
+export GOOGLE_IMPERSONATE_SERVICE_ACCOUNT=terraform-operator@${PROJECT_ID}.iam.gserviceaccount.com
+```
+
+When Terraform runs, the Google provider sees both your ADC credentials and the `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT` env var. It uses your ADC to call `generateAccessToken` on the SA, then makes all GCP API calls using the resulting short-lived token (valid for 1 hour, auto-refreshed). Audit logs record the SA as the actor, with your identity visible in the `serviceAccountDelegationInfo` field.
+
+> `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT` must be set in every terminal session where you run `terraform`. Add it to your shell profile or a project-local `.envrc` (with `direnv`) to avoid having to re-export it each time.
 
 ### 1.4 Create Workload Identity service accounts
 

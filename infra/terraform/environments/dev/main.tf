@@ -15,6 +15,10 @@ terraform {
 provider "google" {
   project = var.project_id
   region  = var.region
+  # Reads GOOGLE_IMPERSONATE_SERVICE_ACCOUNT from the environment.
+  # Set it to terraform-operator@<project>.iam.gserviceaccount.com before running
+  # terraform apply. SA key files are not used; see infra/DEPLOYMENT.md §1.3.
+  impersonate_service_account = var.impersonate_service_account
 }
 
 locals {
