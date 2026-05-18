@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: privacy
+  namespace: ai-personalization-platform
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: privacy
+  template:
+    metadata:
+      labels:
+        app: privacy
+    spec:
+      serviceAccountName: privacy
+      nodeSelector:
+        cloud.google.com/gke-nodepool: apps-spot
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: privacy
+                topologyKey: kubernetes.io/hostname
+      initContainers:
+        - name: alembic-migrate
+          image: REPLACE_REGION-docker.pkg.dev/REPLACE_PROJECT/personalization/privacy:latest
+          command: ["uv", "run", "alembic", "upgrade", "head"]
+          envFrom:
+            - secretRef:
+                name: privacy-secret
+      containers:
+        - name: privacy
+          image: REPLACE_REGION-docker.pkg.dev/REPLACE_PROJECT/personalization/privacy:latest
+          ports:
+            - containerPort: 8001
+          envFrom:
+            - secretRef:
+                name: privacy-secret
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 5
+            periodSeconds: 10

@@ -37,7 +37,9 @@ RUN uv sync --extra pipeline --frozen --no-dev --no-install-project
 # apache-flink-libraries; version must match the Flink 1.20.x series.
 RUN mkdir -p connectors && \
     curl -fL -o connectors/flink-sql-connector-kafka-3.3.0-1.20.jar \
-    https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-kafka/3.3.0-1.20/flink-sql-connector-kafka-3.3.0-1.20.jar
+    https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-kafka/3.3.0-1.20/flink-sql-connector-kafka-3.3.0-1.20.jar && \
+    curl -fL -o connectors/gcs-connector-hadoop3-latest.jar \
+    https://storage.googleapis.com/hadoop-lib/gcs/gcs-connector-hadoop3-latest.jar
 COPY app/ app/
 
 # Install the project itself (fast: editable install + script creation only).
