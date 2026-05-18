@@ -243,6 +243,85 @@ gcloud artifacts repositories add-iam-policy-binding personalization \
   --project=$PROJECT_ID
 ```
 
+**Authentication: Workload Identity Federation (no SA key file)**
+
+The org policy blocks SA key creation, so GitHub Actions cannot use a downloaded key. Use **Workload Identity Federation** instead: GitHub Actions presents its built-in OIDC token to GCP, which exchanges it for a short-lived `cicd-image-pusher` token. No credential is stored in GitHub Secrets.
+
+Create a WIF pool and provider:
+
+```bash
+# Create the pool (once per project)
+gcloud iam workload-identity-pools create github-actions \
+  --location=global \
+  --display-name="GitHub Actions" \
+  --project=$PROJECT_ID
+
+# Create the OIDC provider pointing at GitHub's OIDC issuer
+gcloud iam workload-identity-pools providers create-oidc github \
+  --location=global \
+  --workload-identity-pool=github-actions \
+  --issuer-uri="https://token.actions.githubusercontent.com" \
+  --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository" \
+  --attribute-condition="assertion.repository=='YOUR_GITHUB_ORG/YOUR_REPO'" \
+  --project=$PROJECT_ID
+```
+
+Allow tokens from this pool to impersonate `cicd-image-pusher` (scoped to your repo only via the attribute condition above):
+
+```bash
+# Get the pool's full resource name
+POOL_NAME=$(gcloud iam workload-identity-pools describe github-actions \
+  --location=global --project=$PROJECT_ID \
+  --format="value(name)")
+
+gcloud iam service-accounts add-iam-policy-binding \
+  cicd-image-pusher@${PROJECT_ID}.iam.gserviceaccount.com \
+  --role=roles/iam.workloadIdentityUser \
+  --member="principalSet://iam.googleapis.com/${POOL_NAME}/attribute.repository/YOUR_GITHUB_ORG/YOUR_REPO"
+```
+
+Add these two values to your GitHub Actions workflow (not secrets — they are not sensitive):
+
+```bash
+# Record these for the GitHub Actions workflow
+echo "WIF provider:"
+gcloud iam workload-identity-pools providers describe github \
+  --location=global \
+  --workload-identity-pool=github-actions \
+  --project=$PROJECT_ID \
+  --format="value(name)"
+
+echo "Service account:"
+echo "cicd-image-pusher@${PROJECT_ID}.iam.gserviceaccount.com"
+```
+
+In your GitHub Actions workflow, authenticate before pushing images:
+
+```yaml
+- name: Authenticate to GCP
+  uses: google-github-actions/auth@v2
+  with:
+    workload_identity_provider: "projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github-actions/providers/github"
+    service_account: "cicd-image-pusher@PROJECT_ID.iam.gserviceaccount.com"
+
+- name: Configure Docker for Artifact Registry
+  run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+```
+
+> Replace `YOUR_GITHUB_ORG/YOUR_REPO` with the actual repository slug (e.g. `maverick-nk/ai-personalization-platform`). The `attribute-condition` ensures only workflows from that specific repository can impersonate the SA — tokens from forks or other repos are rejected.
+
+**Why the other SAs need none of this**
+
+| SA | Auth mechanism | Key file needed? |
+|---|---|---|
+| `terraform-operator` | ADC + SA impersonation (§1.3) | No |
+| `feature-pipeline-sa` | GKE Workload Identity — pod gets token automatically from the GKE metadata server | No |
+| `model-training-sa` | GKE Workload Identity — same | No |
+| `mlflow-sa` | GKE Workload Identity — same | No |
+| `cicd-image-pusher` | Workload Identity Federation with GitHub OIDC (this section) | No |
+
+No SA key file is created or stored anywhere in this setup.
+
 ---
 
 ## Part 2 — Terraform: provision infrastructure
